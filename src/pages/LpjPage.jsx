@@ -35,7 +35,7 @@ const Sidebar = ({ onBack }) => (
 )
 
 // ─── VIEW MODE (LPJ sudah disubmit) ───────────────────────────────────────────
-function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving }) {
+function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
 
@@ -154,6 +154,13 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving }) {
         </div>
       )}
 
+      {/* Error message */}
+      {error && (
+        <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>
+          {error}
+        </div>
+      )}
+
       {/* Approval button */}
       {canApproveLpj() && (
         <button onClick={onApprove} disabled={approving}
@@ -176,7 +183,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving }) {
   )
 }
 
-// ─── INPUT MODE (form LPJ baru) ────────────────────────────────────────────────
+// ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function LpjPage() {
   const { pengajuanId } = useParams()
   const { profile } = useAuth()
@@ -190,12 +197,8 @@ export default function LpjPage() {
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState(null)
 
-  // Realisasi per item: { [itemId]: { qty, harga } }
   const [realisasi, setRealisasi] = useState({})
-
-  // Notas: [{ nama_nota, file, itemIds: [] }]
   const [notas, setNotas] = useState([{ nama_nota: '', file: null, itemIds: [] }])
-
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')
 
   useEffect(() => { fetchData() }, [pengajuanId])
@@ -211,7 +214,6 @@ export default function LpjPage() {
     const itemList = i.data || []
     setItems(itemList)
 
-    // Pre-fill realisasi dari item pengajuan
     const prefilledRealisasi = {}
     itemList.forEach(item => {
       prefilledRealisasi[item.id] = {
@@ -225,7 +227,6 @@ export default function LpjPage() {
     setLoading(false)
   }
 
-  // Hitung total realisasi dari semua item
   const totalRealisasi = items.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
@@ -280,35 +281,59 @@ export default function LpjPage() {
     }
   }
 
+  // ─── APPROVE LPJ (fixed) ────────────────────────────────────────────────────
   async function handleApproveLpj() {
     setApproving(true)
+    setError(null)
+
     const role = profile?.role
     let updateData = {}
 
-    if (existingLpj.status === 'submitted') {
-      if (role === 'finance') {
-        updateData = { status: 'approved_finance', approved_finance_at: new Date().toISOString(), approved_finance_by: profile.id }
-      } else if (role === 'cfo') {
-        updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
+    if (existingLpj.status === 'submitted' && role === 'finance') {
+      updateData = {
+        status: 'approved_finance',
+        approved_finance_at: new Date().toISOString(),
+        approved_finance_by: profile.id,
+      }
+    } else if (existingLpj.status === 'submitted' && role === 'cfo') {
+      updateData = {
+        status: 'closed',
+        approved_cfo_at: new Date().toISOString(),
+        approved_cfo_by: profile.id,
       }
     } else if (existingLpj.status === 'approved_finance' && role === 'cfo') {
-      updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
+      updateData = {
+        status: 'closed',
+        approved_cfo_at: new Date().toISOString(),
+        approved_cfo_by: profile.id,
+      }
+    } else {
+      setError(`Role "${role}" tidak bisa approve LPJ dengan status "${existingLpj.status}"`)
+      setApproving(false)
+      return
     }
 
-    await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
+    const { error: updateErr } = await supabase
+      .from('lpj')
+      .update(updateData)
+      .eq('id', existingLpj.id)
+
+    if (updateErr) {
+      setError('Gagal approve: ' + updateErr.message)
+      setApproving(false)
+      return
+    }
+
     await fetchData()
     setApproving(false)
   }
 
   async function handleSubmit() {
-    // Validasi: semua item harus punya realisasi qty > 0
     const itemsValid = items.every(item => Number(realisasi[item.id]?.qty || 0) > 0)
     if (!itemsValid) { setError('Qty realisasi semua item harus diisi'); return }
 
-    // Validasi: semua nota harus punya nama
     if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return }
 
-    // Validasi: semua item harus ter-assign ke minimal 1 nota
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
     const unassigned = items.filter(item => !allAssignedItems.has(item.id))
     if (unassigned.length > 0) {
@@ -320,7 +345,6 @@ export default function LpjPage() {
     setError(null)
 
     try {
-      // Insert LPJ
       const { data: lpj, error: lpjErr } = await supabase
         .from('lpj')
         .insert({
@@ -337,7 +361,6 @@ export default function LpjPage() {
 
       if (lpjErr) throw lpjErr
 
-      // Insert notas + items
       for (const nota of notas) {
         let fileUrl = null
         let fileName = null
@@ -356,7 +379,6 @@ export default function LpjPage() {
           }
         }
 
-        // Hitung total nota dari item yang ter-assign
         const totalNota = nota.itemIds.reduce((sum, itemId) => {
           const r = realisasi[itemId]
           return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
@@ -376,9 +398,7 @@ export default function LpjPage() {
 
         if (notaErr) throw notaErr
 
-        // Insert nota items
         if (nota.itemIds.length > 0) {
-          const item = items.find(i => i.id === nota.itemIds[0])
           const notaItems = nota.itemIds.map(itemId => {
             const origItem = items.find(i => i.id === itemId)
             const r = realisasi[itemId]
@@ -422,6 +442,7 @@ export default function LpjPage() {
           profile={profile}
           onApprove={handleApproveLpj}
           approving={approving}
+          error={error}
         />
       ) : (
         <div style={{ flex: 1, marginLeft: 240, padding: 32, maxWidth: 860 }}>
@@ -536,14 +557,12 @@ export default function LpjPage() {
                   )}
                 </div>
 
-                {/* Nama nota */}
                 <div className="form-group" style={{ marginBottom: 16 }}>
                   <label className="form-label">Nama Toko / Keterangan Nota</label>
                   <input className="form-input" placeholder="Contoh: Toko ABC, Indomaret, dll"
                     value={nota.nama_nota} onChange={e => updateNota(idx, 'nama_nota', e.target.value)} />
                 </div>
 
-                {/* Assign items */}
                 <div style={{ marginBottom: 16 }}>
                   <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -571,7 +590,6 @@ export default function LpjPage() {
                   </div>
                 </div>
 
-                {/* Upload foto */}
                 <div>
                   <div className="form-label" style={{ marginBottom: 8 }}>Foto / Scan Nota</div>
                   {nota.file ? (

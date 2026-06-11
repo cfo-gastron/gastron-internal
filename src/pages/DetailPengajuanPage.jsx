@@ -101,6 +101,17 @@ export default function DetailPengajuanPage() {
     return false
   }
 
+  // CFO dan Finance bisa akses LPJ untuk pengajuan apapun yang sudah approved_ceo
+  function canAccessLpj() {
+    if (!pengajuan) return false
+    if (pengajuan.status !== 'approved_ceo') return false
+    const role = profile?.role
+    if (role === 'cfo' || role === 'finance') return true
+    // Pengaju asli juga tetap bisa
+    if (pengajuan.submitted_by === profile?.id) return true
+    return false
+  }
+
   async function handleApprove() {
     setActionLoading(true)
     const status = pengajuan.status
@@ -153,7 +164,7 @@ export default function DetailPengajuanPage() {
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  const hasActions = canApprove() || pengajuan.status === 'approved_ceo'
+  const hasActions = canApprove() || canAccessLpj()
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
@@ -219,7 +230,7 @@ export default function DetailPengajuanPage() {
           </span>
         </div>
 
-        {/* Meta info — 2 col on mobile, 4 col on desktop */}
+        {/* Meta info */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 14 : 20 }}>
             {[
@@ -250,7 +261,7 @@ export default function DetailPengajuanPage() {
           )}
         </div>
 
-        {/* Items — table on desktop, cards on mobile */}
+        {/* Items */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
             Item Pengajuan
@@ -310,7 +321,7 @@ export default function DetailPengajuanPage() {
           )}
         </div>
 
-        {/* Penerima — 2 col on mobile, 4 col on desktop */}
+        {/* Penerima */}
         {penerima.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Penerima Pembayaran</div>
@@ -382,7 +393,7 @@ export default function DetailPengajuanPage() {
           )}
         </div>
 
-        {/* Action buttons — inline on desktop, fixed bottom on mobile */}
+        {/* Action buttons */}
         {hasActions && (
           isMobile ? (
             <div style={{
@@ -404,10 +415,10 @@ export default function DetailPengajuanPage() {
                   </button>
                 </>
               )}
-              {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
+              {canAccessLpj() && (
                 <button onClick={() => navigate(`/lpj/${id}`)}
                   style={{ flex: 1, padding: '13px 8px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  📋 Buat LPJ
+                  📋 Buat / Lihat LPJ
                 </button>
               )}
             </div>
@@ -425,10 +436,10 @@ export default function DetailPengajuanPage() {
                   </button>
                 </div>
               )}
-              {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
+              {canAccessLpj() && (
                 <button onClick={() => navigate(`/lpj/${id}`)}
                   style={{ width: '100%', padding: '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  📋 Buat Laporan Pertanggungjawaban (LPJ)
+                  📋 Buat / Lihat Laporan Pertanggungjawaban (LPJ)
                 </button>
               )}
             </div>
