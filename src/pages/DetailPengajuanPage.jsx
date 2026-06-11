@@ -61,7 +61,17 @@ export default function DetailPengajuanPage() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+
+  const canArchive = ['cfo', 'finance', 'ceo'].includes(profile?.role)
+
+  async function handleArchive() {
+    if (!window.confirm('Arsipkan pengajuan ini? Pengajuan tidak akan muncul di dashboard tapi masih bisa diakses di halaman Arsip.')) return
+    setArchiving(true)
+    await supabase.from('pengajuan').update({ is_archived: true }).eq('id', id)
+    navigate('/arsip')
+    setArchiving(false)
+  }
 
   useEffect(() => {
     fetchDetail()
@@ -440,6 +450,12 @@ export default function DetailPengajuanPage() {
                 <button onClick={() => navigate(`/lpj/${id}`)}
                   style={{ width: '100%', padding: '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
                   📋 Buat / Lihat Laporan Pertanggungjawaban (LPJ)
+                </button>
+              )}
+              {canArchive && (
+                <button onClick={handleArchive} disabled={archiving}
+                  style={{ width: '100%', padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', marginTop: 8, opacity: archiving ? 0.7 : 1 }}>
+                  {archiving ? 'Mengarsipkan...' : '🗂 Arsipkan Pengajuan'}
                 </button>
               )}
             </div>

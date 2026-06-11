@@ -418,10 +418,26 @@ export default function LpjPage() {
                       const r = realisasi[item.id] || {}
                       const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
                       const checked = nota.itemIds.includes(item.id)
+                      // Item sudah di-assign ke nota lain
+                      const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
+                      const disabled = assignedToOther && !checked
                       return (
-                        <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: checked ? '#FFF5F5' : '#FAFAFA', border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}` }}>
-                          <input type="checkbox" checked={checked} onChange={() => toggleItemInNota(idx, item.id)} style={{ accentColor: '#C0272D' }} />
-                          <span style={{ fontSize: 13, color: '#333', flex: 1 }}>{item.uraian}</span>
+                        <label key={item.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          cursor: disabled ? 'not-allowed' : 'pointer',
+                          padding: '10px 12px', borderRadius: 8,
+                          background: checked ? '#FFF5F5' : disabled ? '#F5F5F5' : '#FAFAFA',
+                          border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}`,
+                          opacity: disabled ? 0.5 : 1,
+                        }}>
+                          <input type="checkbox" checked={checked}
+                            disabled={disabled}
+                            onChange={() => !disabled && toggleItemInNota(idx, item.id)}
+                            style={{ accentColor: '#C0272D' }} />
+                          <span style={{ fontSize: 13, color: disabled ? '#AAA' : '#333', flex: 1 }}>
+                            {item.uraian}
+                            {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA', marginLeft: 6 }}>(sudah di nota lain)</span>}
+                          </span>
                           <span style={{ fontSize: 12, color: '#888' }}>{r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong></span>
                         </label>
                       )
