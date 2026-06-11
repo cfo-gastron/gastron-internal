@@ -1,3 +1,5 @@
+// DashboardPage.jsx — full updated
+
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -34,15 +36,45 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// ── LPJ Badge ─────────────────────────────────────────────────────────────────
+function LpjBadge({ lpjStatus, onClick }) {
+  // hanya tampil kalau pengajuan sudah transferred
+  const config = {
+    none:             { label: 'Butuh LPJ',      bg: '#FFF0F0', color: '#C0272D', border: '#FFCDD2' },
+    submitted:        { label: 'LPJ Menunggu',   bg: '#FFF8E1', color: '#B8860B', border: '#FFE082' },
+    approved_finance: { label: 'LPJ Menunggu CFO', bg: '#E3F2FD', color: '#1565C0', border: '#90CAF9' },
+    closed:           { label: 'LPJ Closed ✓',   bg: '#E8F5E9', color: '#2E7D32', border: '#A5D6A7' },
+  }
+
+  const c = config[lpjStatus] || config.none
+
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); onClick() }}
+      style={{
+        display: 'inline-block',
+        background: c.bg, color: c.color,
+        border: `1px solid ${c.border}`,
+        borderRadius: 6, padding: '3px 8px',
+        fontSize: 11, fontWeight: 600,
+        cursor: 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      {c.label}
+    </span>
+  )
+}
+
 export default function DashboardPage() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
+  const [lpjMap, setLpjMap] = useState({})   // { [pengajuan_id]: lpj_status | 'none' }
   const [loading, setLoading] = useState(true)
   const [activeNav, setActiveNav] = useState('/dashboard')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
-  const isApprover = ['cfo', 'ceo', 'cao', 'coo'].includes(profile?.role)
+  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
 
   useEffect(() => {
     fetchPengajuan()
@@ -57,7 +89,29 @@ export default function DashboardPage() {
       .from('pengajuan')
       .select('*')
       .order('created_at', { ascending: false })
-    if (!error) setPengajuan(data || [])
+
+    if (!error && data) {
+      setPengajuan(data)
+
+      // Fetch LPJ hanya untuk yang sudah transferred
+      const transferredIds = data
+        .filter(p => p.status === 'approved_ceo')
+        .map(p => p.id)
+
+      if (transferredIds.length > 0) {
+        const { data: lpjData } = await supabase
+          .from('lpj')
+          .select('pengajuan_id, status')
+          .in('pengajuan_id', transferredIds)
+
+        const map = {}
+        // Default semua ke 'none' dulu
+        transferredIds.forEach(id => { map[id] = 'none' })
+        // Override dengan status LPJ yang ada
+        lpjData?.forEach(l => { map[l.pengajuan_id] = l.status })
+        setLpjMap(map)
+      }
+    }
     setLoading(false)
   }
 
@@ -137,7 +191,6 @@ export default function DashboardPage() {
         minHeight: '100vh',
       }}>
 
-        {/* Mobile header */}
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <img src="/logo-gastron.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
@@ -195,7 +248,7 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : isMobile ? (
-            // Mobile: card list
+            // ── Mobile: card list ──────────────────────────────────────────────
             <div style={{ padding: '8px 0' }}>
               {pengajuan.map(p => (
                 <div key={p.id}
@@ -207,20 +260,29 @@ export default function DashboardPage() {
                       {STATUS_LABEL[p.status]}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ background: '#F0F0F0', color: '#555', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700 }}>{p.division}</span>
                     <span style={{ fontSize: 12, fontWeight: 600, color: '#C0272D' }}>{formatRp(p.total_pengajuan)}</span>
                     <span style={{ fontSize: 11, color: '#BBB' }}>{formatDate(p.submitted_at || p.created_at)}</span>
                   </div>
+                  {/* LPJ badge — mobile */}
+                  {p.status === 'approved_ceo' && lpjMap[p.id] !== undefined && (
+                    <div style={{ marginTop: 8 }}>
+                      <LpjBadge
+                        lpjStatus={lpjMap[p.id]}
+                        onClick={() => navigate(`/lpj/${p.id}`)}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
-            // Desktop: table
+            // ── Desktop: table ─────────────────────────────────────────────────
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#FAFAFA' }}>
-                  {['Kode Surat', 'Judul', 'Tim', 'Total', 'Tanggal', 'Status', ''].map(h => (
+                  {['Kode Surat', 'Judul', 'Tim', 'Total', 'Tanggal', 'Status', 'LPJ', ''].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: '1px solid #F0F0F0' }}>{h}</th>
                   ))}
                 </tr>
@@ -240,6 +302,15 @@ export default function DashboardPage() {
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#888' }}>{formatDate(p.submitted_at || p.created_at)}</td>
                     <td style={{ padding: '14px 16px' }}>
                       <span className={`badge ${STATUS_CLASS[p.status] || 'badge-pending'}`}>{STATUS_LABEL[p.status] || p.status}</span>
+                    </td>
+                    {/* ── LPJ column ── */}
+                    <td style={{ padding: '14px 16px' }}>
+                      {p.status === 'approved_ceo' && lpjMap[p.id] !== undefined && (
+                        <LpjBadge
+                          lpjStatus={lpjMap[p.id]}
+                          onClick={() => navigate(`/lpj/${p.id}`)}
+                        />
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#C0272D', fontWeight: 600 }}>Lihat →</td>
                   </tr>
