@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { generateLpjPdf } from '../lib/generateLpjPdf'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -34,7 +35,6 @@ const Sidebar = ({ onBack }) => (
   </div>
 )
 
-// ─── VIEW MODE (LPJ sudah disubmit) ───────────────────────────────────────────
 function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
@@ -52,23 +52,9 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
     return ''
   }
 
-  const statusLabel = {
-    submitted: 'Menunggu Approval',
-    approved_finance: 'Menunggu CFO',
-    closed: 'Closed ✓',
-  }
-
-  const statusColor = {
-    submitted: '#B8860B',
-    approved_finance: '#1565C0',
-    closed: '#2E7D32',
-  }
-
-  const statusBg = {
-    submitted: '#FFF8E1',
-    approved_finance: '#E3F2FD',
-    closed: '#E8F5E9',
-  }
+  const statusLabel = { submitted: 'Menunggu Approval', approved_finance: 'Menunggu CFO', closed: 'Closed ✓' }
+  const statusColor = { submitted: '#B8860B', approved_finance: '#1565C0', closed: '#2E7D32' }
+  const statusBg = { submitted: '#FFF8E1', approved_finance: '#E3F2FD', closed: '#E8F5E9' }
 
   return (
     <div style={{ flex: 1, marginLeft: 240, padding: 32, maxWidth: 860 }}>
@@ -77,7 +63,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
         <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan?.judul} · {pengajuan?.kode_surat}</div>
       </div>
 
-      {/* Status banner */}
       <div style={{ background: statusBg[lpj.status] || '#F5F5F5', borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: statusColor[lpj.status] || '#555' }}>
           {statusLabel[lpj.status] || lpj.status}
@@ -85,7 +70,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
         <div style={{ fontSize: 12, color: '#999' }}>Disubmit {formatDate(lpj.submitted_at)}</div>
       </div>
 
-      {/* Summary */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: 24, marginBottom: 20 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
           {[
@@ -106,7 +90,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
         )}
       </div>
 
-      {/* Nota detail */}
       {lpj.lpj_nota?.length > 0 && (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '16px 24px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
@@ -154,36 +137,38 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error }) {
         </div>
       )}
 
-      {/* Error message */}
       {error && (
         <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>
           {error}
         </div>
       )}
 
-      {/* Approval button */}
       {canApproveLpj() && (
         <button onClick={onApprove} disabled={approving}
-          style={{
-            width: '100%', padding: 14, background: '#2E7D32',
-            border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff',
-            cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1
-          }}>
+          style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1, marginBottom: 12 }}>
           {approving ? 'Memproses...' : approveLabel()}
         </button>
       )}
 
       {lpj.status === 'closed' && (
-        <div style={{ background: '#E8F5E9', borderRadius: 12, padding: 20, textAlign: 'center' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#2E7D32' }}>✓ LPJ Closed</div>
-          <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Laporan pertanggungjawaban telah selesai diverifikasi</div>
+        <div style={{ background: '#E8F5E9', borderRadius: 12, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#2E7D32' }}>✓ LPJ Closed</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Laporan pertanggungjawaban telah selesai diverifikasi</div>
+            </div>
+            <button
+              onClick={() => generateLpjPdf(pengajuan, lpj)}
+              style={{ background: '#2E7D32', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+              📄 Download PDF
+            </button>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-// ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function LpjPage() {
   const { pengajuanId } = useParams()
   const { profile } = useAuth()
@@ -196,7 +181,6 @@ export default function LpjPage() {
   const [submitting, setSubmitting] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState(null)
-
   const [realisasi, setRealisasi] = useState({})
   const [notas, setNotas] = useState([{ nama_nota: '', file: null, itemIds: [] }])
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')
@@ -213,16 +197,9 @@ export default function LpjPage() {
     setPengajuan(p.data)
     const itemList = i.data || []
     setItems(itemList)
-
     const prefilledRealisasi = {}
-    itemList.forEach(item => {
-      prefilledRealisasi[item.id] = {
-        qty: item.qty,
-        harga: item.harga_satuan,
-      }
-    })
+    itemList.forEach(item => { prefilledRealisasi[item.id] = { qty: item.qty, harga: item.harga_satuan } })
     setRealisasi(prefilledRealisasi)
-
     if (l.data) setExistingLpj(l.data)
     setLoading(false)
   }
@@ -235,40 +212,21 @@ export default function LpjPage() {
   const sisaDana = Number(pengajuan?.total_pengajuan || 0) - totalRealisasi
 
   function updateRealisasi(itemId, field, value) {
-    setRealisasi(prev => ({
-      ...prev,
-      [itemId]: { ...prev[itemId], [field]: value }
-    }))
+    setRealisasi(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }))
   }
 
-  function addNota() {
-    setNotas([...notas, { nama_nota: '', file: null, itemIds: [] }])
-  }
-
-  function removeNota(idx) {
-    if (notas.length === 1) return
-    setNotas(notas.filter((_, i) => i !== idx))
-  }
-
-  function updateNota(idx, field, value) {
-    const updated = [...notas]
-    updated[idx][field] = value
-    setNotas(updated)
-  }
+  function addNota() { setNotas([...notas, { nama_nota: '', file: null, itemIds: [] }]) }
+  function removeNota(idx) { if (notas.length === 1) return; setNotas(notas.filter((_, i) => i !== idx)) }
+  function updateNota(idx, field, value) { const updated = [...notas]; updated[idx][field] = value; setNotas(updated) }
 
   function toggleItemInNota(notaIdx, itemId) {
     const updated = [...notas]
     const ids = updated[notaIdx].itemIds
-    updated[notaIdx].itemIds = ids.includes(itemId)
-      ? ids.filter(id => id !== itemId)
-      : [...ids, itemId]
+    updated[notaIdx].itemIds = ids.includes(itemId) ? ids.filter(id => id !== itemId) : [...ids, itemId]
     setNotas(updated)
   }
 
-  function handleFileChange(idx, e) {
-    const file = e.target.files[0]
-    if (file) updateNota(idx, 'file', file)
-  }
+  function handleFileChange(idx, e) { const file = e.target.files[0]; if (file) updateNota(idx, 'file', file) }
 
   function handlePaste(idx, e) {
     const clipItems = e.clipboardData?.items
@@ -281,49 +239,26 @@ export default function LpjPage() {
     }
   }
 
-  // ─── APPROVE LPJ (fixed) ────────────────────────────────────────────────────
   async function handleApproveLpj() {
     setApproving(true)
     setError(null)
-
     const role = profile?.role
     let updateData = {}
 
     if (existingLpj.status === 'submitted' && role === 'finance') {
-      updateData = {
-        status: 'approved_finance',
-        approved_finance_at: new Date().toISOString(),
-        approved_finance_by: profile.id,
-      }
+      updateData = { status: 'approved_finance', approved_finance_at: new Date().toISOString(), approved_finance_by: profile.id }
     } else if (existingLpj.status === 'submitted' && role === 'cfo') {
-      updateData = {
-        status: 'closed',
-        approved_cfo_at: new Date().toISOString(),
-        approved_cfo_by: profile.id,
-      }
+      updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
     } else if (existingLpj.status === 'approved_finance' && role === 'cfo') {
-      updateData = {
-        status: 'closed',
-        approved_cfo_at: new Date().toISOString(),
-        approved_cfo_by: profile.id,
-      }
+      updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
     } else {
       setError(`Role "${role}" tidak bisa approve LPJ dengan status "${existingLpj.status}"`)
       setApproving(false)
       return
     }
 
-    const { error: updateErr } = await supabase
-      .from('lpj')
-      .update(updateData)
-      .eq('id', existingLpj.id)
-
-    if (updateErr) {
-      setError('Gagal approve: ' + updateErr.message)
-      setApproving(false)
-      return
-    }
-
+    const { error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
+    if (updateErr) { setError('Gagal approve: ' + updateErr.message); setApproving(false); return }
     await fetchData()
     setApproving(false)
   }
@@ -331,128 +266,71 @@ export default function LpjPage() {
   async function handleSubmit() {
     const itemsValid = items.every(item => Number(realisasi[item.id]?.qty || 0) > 0)
     if (!itemsValid) { setError('Qty realisasi semua item harus diisi'); return }
-
     if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return }
-
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
     const unassigned = items.filter(item => !allAssignedItems.has(item.id))
-    if (unassigned.length > 0) {
-      setError(`Item "${unassigned[0].uraian}" belum di-assign ke nota manapun`)
-      return
-    }
+    if (unassigned.length > 0) { setError(`Item "${unassigned[0].uraian}" belum di-assign ke nota manapun`); return }
 
-    setSubmitting(true)
-    setError(null)
+    setSubmitting(true); setError(null)
 
     try {
-      const { data: lpj, error: lpjErr } = await supabase
-        .from('lpj')
-        .insert({
-          pengajuan_id: pengajuanId,
-          submitted_by: profile.id,
-          status: 'submitted',
-          total_realisasi: totalRealisasi,
-          total_pengajuan: pengajuan.total_pengajuan,
-          metode_pengembalian: sisaDana > 0 ? metodePengembalian : null,
-          submitted_at: new Date().toISOString(),
-        })
-        .select()
-        .single()
-
+      const { data: lpj, error: lpjErr } = await supabase.from('lpj').insert({
+        pengajuan_id: pengajuanId, submitted_by: profile.id, status: 'submitted',
+        total_realisasi: totalRealisasi, total_pengajuan: pengajuan.total_pengajuan,
+        metode_pengembalian: sisaDana > 0 ? metodePengembalian : null,
+        submitted_at: new Date().toISOString(),
+      }).select().single()
       if (lpjErr) throw lpjErr
 
       for (const nota of notas) {
-        let fileUrl = null
-        let fileName = null
-
+        let fileUrl = null, fileName = null
         if (nota.file) {
           const ext = nota.file.name?.split('.').pop() || 'jpg'
           const path = `${lpj.id}/${Date.now()}.${ext}`
-          const { data: uploadData } = await supabase.storage
-            .from('lpj-nota')
-            .upload(path, nota.file)
-
+          const { data: uploadData } = await supabase.storage.from('lpj-nota').upload(path, nota.file)
           if (uploadData) {
             const { data: urlData } = supabase.storage.from('lpj-nota').getPublicUrl(path)
-            fileUrl = urlData.publicUrl
-            fileName = nota.file.name || 'nota.jpg'
+            fileUrl = urlData.publicUrl; fileName = nota.file.name || 'nota.jpg'
           }
         }
-
         const totalNota = nota.itemIds.reduce((sum, itemId) => {
           const r = realisasi[itemId]
           return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
         }, 0)
-
-        const { data: notaData, error: notaErr } = await supabase
-          .from('lpj_nota')
-          .insert({
-            lpj_id: lpj.id,
-            nama_nota: nota.nama_nota,
-            total_nota: totalNota,
-            file_url: fileUrl,
-            file_name: fileName,
-          })
-          .select()
-          .single()
-
+        const { data: notaData, error: notaErr } = await supabase.from('lpj_nota').insert({
+          lpj_id: lpj.id, nama_nota: nota.nama_nota, total_nota: totalNota, file_url: fileUrl, file_name: fileName,
+        }).select().single()
         if (notaErr) throw notaErr
-
         if (nota.itemIds.length > 0) {
           const notaItems = nota.itemIds.map(itemId => {
             const origItem = items.find(i => i.id === itemId)
             const r = realisasi[itemId]
-            return {
-              nota_id: notaData.id,
-              pengajuan_item_id: itemId,
-              uraian: origItem?.uraian || '',
-              satuan: origItem?.satuan || '',
-              qty_pengajuan: origItem?.qty || 0,
-              harga_pengajuan: origItem?.harga_satuan || 0,
-              realisasi_qty: Number(r?.qty || 0),
-              realisasi_harga: Number(r?.harga || 0),
-            }
+            return { nota_id: notaData.id, pengajuan_item_id: itemId, uraian: origItem?.uraian || '', satuan: origItem?.satuan || '', qty_pengajuan: origItem?.qty || 0, harga_pengajuan: origItem?.harga_satuan || 0, realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0) }
           })
           await supabase.from('lpj_nota_items').insert(notaItems)
         }
       }
-
       await fetchData()
-    } catch (err) {
-      setError(err.message || 'Terjadi kesalahan')
-    }
-
+    } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
   }
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
-
-  if (!pengajuan) return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
-  )
+  if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
       <Sidebar onBack={() => navigate(`/pengajuan/${pengajuanId}`)} />
 
       {existingLpj ? (
-        <LpjViewMode
-          pengajuan={pengajuan}
-          lpj={existingLpj}
-          profile={profile}
-          onApprove={handleApproveLpj}
-          approving={approving}
-          error={error}
-        />
+        <LpjViewMode pengajuan={pengajuan} lpj={existingLpj} profile={profile} onApprove={handleApproveLpj} approving={approving} error={error} />
       ) : (
         <div style={{ flex: 1, marginLeft: 240, padding: 32, maxWidth: 860 }}>
-
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>Laporan Pertanggungjawaban</div>
             <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan.judul} · {pengajuan.kode_surat}</div>
           </div>
 
-          {/* Summary anggaran */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: 24, marginBottom: 20 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
               {[
@@ -469,16 +347,11 @@ export default function LpjPage() {
           </div>
 
           {error && (
-            <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#C0272D' }}>
-              {error}
-            </div>
+            <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#C0272D' }}>{error}</div>
           )}
 
-          {/* Realisasi per item */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 20 }}>
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
-              Realisasi Item
-            </div>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Realisasi Item</div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#FAFAFA' }}>
@@ -497,31 +370,19 @@ export default function LpjPage() {
                         <div>{item.uraian}</div>
                         <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#999', textAlign: 'right' }}>
-                        {item.qty} {item.satuan}
-                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#999', textAlign: 'right' }}>{item.qty} {item.satuan}</td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                          <input
-                            type="number"
-                            value={r.qty || ''}
-                            onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                            style={{ width: 70, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }}
-                          />
+                          <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                            style={{ width: 70, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
                           <span style={{ fontSize: 12, color: '#999' }}>{item.satuan}</span>
                         </div>
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          value={r.harga || ''}
-                          onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
-                          style={{ width: 110, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }}
-                        />
+                        <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
+                          style={{ width: 110, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>
-                        {formatRp(subtotal)}
-                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(subtotal)}</td>
                     </tr>
                   )
                 })}
@@ -535,34 +396,21 @@ export default function LpjPage() {
             </table>
           </div>
 
-          {/* Notas */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
-              <button onClick={addNota}
-                style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-                + Tambah Nota
-              </button>
+              <button onClick={addNota} style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Nota</button>
             </div>
-
             {notas.map((nota, idx) => (
-              <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: 20, marginBottom: 16 }}
-                onPaste={e => handlePaste(idx, e)}>
-
+              <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: 20, marginBottom: 16 }} onPaste={e => handlePaste(idx, e)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Nota #{idx + 1}</div>
-                  {notas.length > 1 && (
-                    <button onClick={() => removeNota(idx)}
-                      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
-                  )}
+                  {notas.length > 1 && <button onClick={() => removeNota(idx)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>}
                 </div>
-
                 <div className="form-group" style={{ marginBottom: 16 }}>
                   <label className="form-label">Nama Toko / Keterangan Nota</label>
-                  <input className="form-input" placeholder="Contoh: Toko ABC, Indomaret, dll"
-                    value={nota.nama_nota} onChange={e => updateNota(idx, 'nama_nota', e.target.value)} />
+                  <input className="form-input" placeholder="Contoh: Toko ABC, Indomaret, dll" value={nota.nama_nota} onChange={e => updateNota(idx, 'nama_nota', e.target.value)} />
                 </div>
-
                 <div style={{ marginBottom: 16 }}>
                   <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -571,25 +419,15 @@ export default function LpjPage() {
                       const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
                       const checked = nota.itemIds.includes(item.id)
                       return (
-                        <label key={item.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                          padding: '10px 12px', borderRadius: 8,
-                          background: checked ? '#FFF5F5' : '#FAFAFA',
-                          border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}`
-                        }}>
-                          <input type="checkbox" checked={checked}
-                            onChange={() => toggleItemInNota(idx, item.id)}
-                            style={{ accentColor: '#C0272D' }} />
+                        <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: checked ? '#FFF5F5' : '#FAFAFA', border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}` }}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleItemInNota(idx, item.id)} style={{ accentColor: '#C0272D' }} />
                           <span style={{ fontSize: 13, color: '#333', flex: 1 }}>{item.uraian}</span>
-                          <span style={{ fontSize: 12, color: '#888' }}>
-                            {r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong>
-                          </span>
+                          <span style={{ fontSize: 12, color: '#888' }}>{r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong></span>
                         </label>
                       )
                     })}
                   </div>
                 </div>
-
                 <div>
                   <div className="form-label" style={{ marginBottom: 8 }}>Foto / Scan Nota</div>
                   {nota.file ? (
@@ -599,8 +437,7 @@ export default function LpjPage() {
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{nota.file.name || 'Gambar dari clipboard'}</div>
                         <div style={{ fontSize: 11, color: '#999' }}>{nota.file.size ? `${(nota.file.size / 1024).toFixed(1)} KB` : ''}</div>
                       </div>
-                      <button onClick={() => updateNota(idx, 'file', null)}
-                        style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                      <button onClick={() => updateNota(idx, 'file', null)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
                     </div>
                   ) : (
                     <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed #E0E0E0', borderRadius: 10, padding: 20, cursor: 'pointer' }}>
@@ -615,23 +452,13 @@ export default function LpjPage() {
             ))}
           </div>
 
-          {/* Sisa dana */}
           {sisaDana > 0 && (
             <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#B8860B', marginBottom: 12 }}>
-                Sisa dana {formatRp(sisaDana)} — pilih metode pengembalian
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#B8860B', marginBottom: 12 }}>Sisa dana {formatRp(sisaDana)} — pilih metode pengembalian</div>
               <div style={{ display: 'flex', gap: 10 }}>
                 {['transfer', 'cash'].map(m => (
                   <button key={m} onClick={() => setMetodePengembalian(m)}
-                    style={{
-                      flex: 1, padding: 10,
-                      background: metodePengembalian === m ? '#FFF0F0' : '#fff',
-                      border: `1.5px solid ${metodePengembalian === m ? '#C0272D' : '#E0E0E0'}`,
-                      borderRadius: 8, fontSize: 13, fontWeight: 600,
-                      color: metodePengembalian === m ? '#C0272D' : '#555',
-                      cursor: 'pointer', fontFamily: 'inherit'
-                    }}>
+                    style={{ flex: 1, padding: 10, background: metodePengembalian === m ? '#FFF0F0' : '#fff', border: `1.5px solid ${metodePengembalian === m ? '#C0272D' : '#E0E0E0'}`, borderRadius: 8, fontSize: 13, fontWeight: 600, color: metodePengembalian === m ? '#C0272D' : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
                     {m === 'transfer' ? '🏦 Transfer' : '💵 Cash'}
                   </button>
                 ))}
@@ -639,18 +466,12 @@ export default function LpjPage() {
             </div>
           )}
 
-          {/* Submit */}
           <div style={{ display: 'flex', gap: 12 }}>
-            <button onClick={() => navigate(`/pengajuan/${pengajuanId}`)}
-              style={{ flex: 1, padding: 14, background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-              Batal
-            </button>
-            <button onClick={handleSubmit} disabled={submitting}
-              style={{ flex: 2, padding: 14, background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
+            <button onClick={() => navigate(`/pengajuan/${pengajuanId}`)} style={{ flex: 1, padding: 14, background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+            <button onClick={handleSubmit} disabled={submitting} style={{ flex: 2, padding: 14, background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
               {submitting ? 'Menyimpan...' : 'Submit LPJ'}
             </button>
           </div>
-
         </div>
       )}
     </div>
