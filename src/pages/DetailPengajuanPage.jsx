@@ -34,6 +34,17 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function getApproveLabel(status, role) {
+  if (status === 'approved_cfo') return '✓ Final Approve (as CEO)'
+  return '✓ Approve'
+}
+
+function getLogCatatan(status, fullName) {
+  if (status === 'approved_cfo') return `Final approval (CEO) oleh ${fullName}`
+  if (status === 'approved_step1') return `Approved (CFO) oleh ${fullName}`
+  return `Approved oleh ${fullName}`
+}
+
 export default function DetailPengajuanPage() {
   const { id } = useParams()
   const { profile } = useAuth()
@@ -70,7 +81,6 @@ export default function DetailPengajuanPage() {
     setLoading(false)
   }
 
-  // Cek apakah user bisa approve
   function canApprove() {
     if (!pengajuan) return false
     const role = profile?.role
@@ -89,25 +99,18 @@ export default function DetailPengajuanPage() {
 
   async function handleApprove() {
     setActionLoading(true)
-    const role = profile?.role
     const status = pengajuan.status
-
-    let newStatus = ''
     let updateData = {}
 
     if (status === 'submitted') {
       if (pengajuan.division === 'FIN') {
-        newStatus = 'approved_cfo'
         updateData = { status: 'approved_cfo', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id, approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
       } else {
-        newStatus = 'approved_step1'
         updateData = { status: 'approved_step1', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id }
       }
     } else if (status === 'approved_step1') {
-      newStatus = 'approved_cfo'
       updateData = { status: 'approved_cfo', approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
     } else if (status === 'approved_cfo') {
-      newStatus = 'approved_ceo'
       updateData = { status: 'approved_ceo', approved_ceo_at: new Date().toISOString(), ceo_approved_by: profile.id }
     }
 
@@ -117,7 +120,7 @@ export default function DetailPengajuanPage() {
       action: 'approved',
       action_by: profile.id,
       role_at_time: profile.role,
-      catatan: `Approved oleh ${profile.full_name}`,
+      catatan: getLogCatatan(status, profile.full_name),
     })
 
     fetchDetail()
@@ -184,7 +187,6 @@ export default function DetailPengajuanPage() {
       {/* MAIN */}
       <div style={{ flex: 1, marginLeft: 240, padding: '32px', maxWidth: 860 }}>
 
-        {/* Back + Header */}
         <button onClick={() => navigate('/dashboard')}
           style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
           ← Kembali
@@ -245,9 +247,9 @@ export default function DetailPengajuanPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, i) => (
+              {items.map((item, idx) => (
                 <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#999', textAlign: 'center' }}>{i + 1}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#999', textAlign: 'center' }}>{idx + 1}</td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>{item.uraian}</td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.qty}</td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.satuan}</td>
@@ -269,7 +271,7 @@ export default function DetailPengajuanPage() {
         {penerima.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: '20px 24px', marginBottom: 20 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 16 }}>Penerima Pembayaran</div>
-            {penerima.map((p, i) => (
+            {penerima.map((p) => (
               <div key={p.id} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px 16px', marginBottom: 8 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                   {[
@@ -312,12 +314,20 @@ export default function DetailPengajuanPage() {
             <div style={{ fontSize: 13, color: '#999' }}>Belum ada aktivitas</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {logs.map((log, i) => (
+              {logs.map((log) => (
                 <div key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : '#C0272D',
+                    marginTop: 4, flexShrink: 0
+                  }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>
-                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : 'Ditolak'}
+                      {log.action === 'submitted' ? 'Pengajuan disubmit'
+                        : log.action === 'approved' ? 'Disetujui'
+                        : log.action === 'revision' ? 'Diminta revisi'
+                        : log.action === 'hold' ? 'Ditahan'
+                        : 'Ditolak'}
                       {log.user && <span style={{ color: '#999', fontWeight: 400 }}> oleh {log.user.full_name}</span>}
                     </div>
                     {log.catatan && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{log.catatan}</div>}
@@ -354,12 +364,12 @@ export default function DetailPengajuanPage() {
                 opacity: actionLoading ? 0.7 : 1
               }}
             >
-              {actionLoading ? 'Memproses...' : '✓ Approve'}
+              {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
             </button>
           </div>
         )}
 
-        {/* LPJ button — kalau udah approved_ceo dan pengaju sendiri */}
+        {/* LPJ button */}
         {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
           <button
             onClick={() => navigate(`/lpj/${id}`)}
