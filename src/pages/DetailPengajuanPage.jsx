@@ -56,13 +56,19 @@ export default function DetailPengajuanPage() {
   const [attachments, setAttachments] = useState([])
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  useEffect(() => { fetchDetail() }, [id])
+  useEffect(() => {
+    fetchDetail()
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [id])
 
   async function fetchDetail() {
     setLoading(true)
@@ -85,7 +91,6 @@ export default function DetailPengajuanPage() {
     if (!pengajuan) return false
     const role = profile?.role
     const status = pengajuan.status
-
     if (status === 'submitted') {
       if (pengajuan.division === 'OPR' && role === 'coo') return true
       if (['ADM', 'PRC'].includes(pengajuan.division) && role === 'cao') return true
@@ -93,7 +98,6 @@ export default function DetailPengajuanPage() {
     }
     if (status === 'approved_step1' && role === 'cfo') return true
     if (status === 'approved_cfo' && (role === 'ceo' || role === 'cfo' || role === 'finance')) return true
-
     return false
   }
 
@@ -101,7 +105,6 @@ export default function DetailPengajuanPage() {
     setActionLoading(true)
     const status = pengajuan.status
     let updateData = {}
-
     if (status === 'submitted') {
       if (pengajuan.division === 'FIN') {
         updateData = { status: 'approved_cfo', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id, approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
@@ -113,7 +116,6 @@ export default function DetailPengajuanPage() {
     } else if (status === 'approved_cfo') {
       updateData = { status: 'approved_ceo', approved_ceo_at: new Date().toISOString(), ceo_approved_by: profile.id }
     }
-
     await supabase.from('pengajuan').update(updateData).eq('id', id)
     await supabase.from('approval_logs').insert({
       pengajuan_id: id,
@@ -122,7 +124,6 @@ export default function DetailPengajuanPage() {
       role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
-
     fetchDetail()
     setActionLoading(false)
   }
@@ -130,13 +131,11 @@ export default function DetailPengajuanPage() {
   async function handleReject() {
     if (!rejectReason.trim()) return
     setActionLoading(true)
-
     await supabase.from('pengajuan').update({
       status: rejectType,
       rejection_type: rejectType,
       rejection_reason: rejectReason,
     }).eq('id', id)
-
     await supabase.from('approval_logs').insert({
       pengajuan_id: id,
       action: rejectType,
@@ -145,66 +144,84 @@ export default function DetailPengajuanPage() {
       rejection_type: rejectType,
       catatan: rejectReason,
     })
-
     setShowRejectModal(false)
     setRejectReason('')
     fetchDetail()
     setActionLoading(false)
   }
 
-  if (loading) return (
-    <div className="loading-screen"><div className="spinner" /></div>
-  )
+  if (loading) return <div className="loading-screen"><div className="spinner" /></div>
+  if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  if (!pengajuan) return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
-  )
+  const hasActions = canApprove() || pengajuan.status === 'approved_ceo'
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
 
-      {/* SIDEBAR */}
-      <div style={{
-        width: 240, background: '#fff', borderRight: '1px solid #F0F0F0',
-        position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
-        display: 'flex', flexDirection: 'column', padding: '24px 20px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-          <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>
-              <span style={{ color: '#C0272D' }}>G</span>astron
+      {/* SIDEBAR — desktop only */}
+      {!isMobile && (
+        <div style={{
+          width: 240, background: '#fff', borderRight: '1px solid #F0F0F0',
+          position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
+          display: 'flex', flexDirection: 'column', padding: '24px 20px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+            <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>
+                <span style={{ color: '#C0272D' }}>G</span>astron
+              </div>
+              <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
             </div>
-            <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
           </div>
+          <button onClick={() => navigate('/dashboard')}
+            style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ⊞ Dashboard
+          </button>
         </div>
-        <button onClick={() => navigate('/dashboard')}
-          style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          ⊞ Dashboard
-        </button>
-      </div>
+      )}
 
       {/* MAIN */}
-      <div style={{ flex: 1, marginLeft: 240, padding: '32px', maxWidth: 860 }}>
+      <div style={{
+        flex: 1,
+        marginLeft: isMobile ? 0 : 240,
+        padding: isMobile ? '16px 16px 100px' : '32px',
+        maxWidth: isMobile ? '100%' : 860,
+      }}>
 
-        <button onClick={() => navigate('/dashboard')}
-          style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
-          ← Kembali
-        </button>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{pengajuan.judul}</div>
-            <div style={{ fontSize: 12, color: '#999', marginTop: 4, fontFamily: 'monospace' }}>{pengajuan.kode_surat}</div>
+        {/* Mobile top bar */}
+        {isMobile ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <button onClick={() => navigate('/dashboard')}
+              style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+              ←
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
+            </div>
           </div>
-          <span className={`badge ${STATUS_CLASS[pengajuan.status]}`} style={{ fontSize: 12, padding: '6px 14px' }}>
+        ) : (
+          <button onClick={() => navigate('/dashboard')}
+            style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
+            ← Kembali
+          </button>
+        )}
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111', lineHeight: 1.3 }}>{pengajuan.judul}</div>
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4, fontFamily: 'monospace' }}>{pengajuan.kode_surat}</div>
+          </div>
+          <span className={`badge ${STATUS_CLASS[pengajuan.status]}`} style={{ fontSize: 11, padding: '5px 10px', flexShrink: 0 }}>
             {STATUS_LABEL[pengajuan.status]}
           </span>
         </div>
 
-        {/* Meta info */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: '20px 24px', marginBottom: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}>
+        {/* Meta info — 2 col on mobile, 4 col on desktop */}
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 14 : 20 }}>
             {[
               { label: 'Divisi', value: pengajuan.division },
               { label: 'Metode Bayar', value: pengajuan.metode_pembayaran },
@@ -212,20 +229,20 @@ export default function DetailPengajuanPage() {
               { label: 'Total', value: formatRp(pengajuan.total_pengajuan) },
             ].map(({ label, value }) => (
               <div key={label}>
-                <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{value}</div>
               </div>
             ))}
           </div>
           {pengajuan.catatan && (
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #F5F5F5' }}>
-              <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>Catatan</div>
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #F5F5F5' }}>
+              <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>Catatan</div>
               <div style={{ fontSize: 13, color: '#555' }}>{pengajuan.catatan}</div>
             </div>
           )}
           {pengajuan.rejection_reason && (
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #F5F5F5', background: '#FFF8F8', borderRadius: 8, padding: '12px 16px' }}>
-              <div style={{ fontSize: 11, color: '#C0272D', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #F5F5F5', background: '#FFF8F8', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ fontSize: 10, color: '#C0272D', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
                 Alasan {pengajuan.rejection_type === 'revision' ? 'Revisi' : pengajuan.rejection_type === 'hold' ? 'Hold' : 'Penolakan'}
               </div>
               <div style={{ fontSize: 13, color: '#C0272D' }}>{pengajuan.rejection_reason}</div>
@@ -233,47 +250,73 @@ export default function DetailPengajuanPage() {
           )}
         </div>
 
-        {/* Items table */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
+        {/* Items — table on desktop, cards on mobile */}
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
             Item Pengajuan
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#FAFAFA' }}>
-                {['No', 'Uraian Transaksi', 'Qty', 'Satuan', 'Harga Satuan', 'Jumlah'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Harga Satuan' || h === 'Jumlah' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #F0F0F0' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+          {isMobile ? (
+            <div>
               {items.map((item, idx) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#999', textAlign: 'center' }}>{idx + 1}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>{item.uraian}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.qty}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.satuan}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'right' }}>{formatRp(item.harga_satuan)}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(item.jumlah)}</td>
-                </tr>
+                <div key={item.id} style={{ padding: '12px 16px', borderBottom: '1px solid #F8F8F8' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: '#111', marginBottom: 4 }}>
+                        <span style={{ color: '#BBB', marginRight: 6 }}>{idx + 1}.</span>{item.uraian}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#888' }}>
+                        {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>
+                      {formatRp(item.jumlah)}
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '2px solid #111' }}>
-                <td colSpan={5} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Pengajuan</td>
-                <td style={{ padding: '12px 16px', fontSize: 16, fontWeight: 700, color: '#C0272D', textAlign: 'right' }}>{formatRp(pengajuan.total_pengajuan)}</td>
-              </tr>
-            </tfoot>
-          </table>
+              <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#555' }}>Total Pengajuan</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#C0272D' }}>{formatRp(pengajuan.total_pengajuan)}</span>
+              </div>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#FAFAFA' }}>
+                  {['No', 'Uraian Transaksi', 'Qty', 'Satuan', 'Harga Satuan', 'Jumlah'].map(h => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Harga Satuan' || h === 'Jumlah' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #F0F0F0' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#999', textAlign: 'center' }}>{idx + 1}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>{item.uraian}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.qty}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.satuan}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'right' }}>{formatRp(item.harga_satuan)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(item.jumlah)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #111' }}>
+                  <td colSpan={5} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Pengajuan</td>
+                  <td style={{ padding: '12px 16px', fontSize: 16, fontWeight: 700, color: '#C0272D', textAlign: 'right' }}>{formatRp(pengajuan.total_pengajuan)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
 
-        {/* Penerima */}
+        {/* Penerima — 2 col on mobile, 4 col on desktop */}
         {penerima.length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 16 }}>Penerima Pembayaran</div>
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Penerima Pembayaran</div>
             {penerima.map((p) => (
-              <div key={p.id} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px 16px', marginBottom: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              <div key={p.id} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 12 : 12 }}>
                   {[
                     { label: 'Nama', value: p.nama_penerima },
                     { label: 'Bank', value: p.bank },
@@ -293,8 +336,8 @@ export default function DetailPengajuanPage() {
 
         {/* Attachments */}
         {attachments.length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 16 }}>Lampiran</div>
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Lampiran</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {attachments.map(a => (
                 <a key={a.id} href={a.file_url} target="_blank" rel="noreferrer"
@@ -307,9 +350,9 @@ export default function DetailPengajuanPage() {
           </div>
         )}
 
-        {/* Approval Timeline */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: '20px 24px', marginBottom: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 16 }}>Timeline Approval</div>
+        {/* Timeline */}
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Timeline Approval</div>
           {logs.length === 0 ? (
             <div style={{ fontSize: 13, color: '#999' }}>Belum ada aktivitas</div>
           ) : (
@@ -339,60 +382,77 @@ export default function DetailPengajuanPage() {
           )}
         </div>
 
-        {/* Approve / Reject buttons */}
-        {canApprove() && (
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button
-              onClick={() => setShowRejectModal(true)}
-              style={{
-                flex: 1, padding: '14px', background: '#fff',
-                border: '1.5px solid #E0E0E0', borderRadius: 12,
-                fontSize: 14, fontWeight: 600, color: '#555',
-                cursor: 'pointer', fontFamily: 'inherit'
-              }}
-            >
-              Tolak / Hold / Revisi
-            </button>
-            <button
-              onClick={handleApprove}
-              disabled={actionLoading}
-              style={{
-                flex: 2, padding: '14px', background: '#C0272D',
-                border: 'none', borderRadius: 12,
-                fontSize: 14, fontWeight: 600, color: '#fff',
-                cursor: 'pointer', fontFamily: 'inherit',
-                opacity: actionLoading ? 0.7 : 1
-              }}
-            >
-              {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
-            </button>
-          </div>
-        )}
-
-        {/* LPJ button */}
-        {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
-          <button
-            onClick={() => navigate(`/lpj/${id}`)}
-            style={{
-              width: '100%', padding: '14px', background: '#1565C0',
-              border: 'none', borderRadius: 12,
-              fontSize: 14, fontWeight: 600, color: '#fff',
-              cursor: 'pointer', fontFamily: 'inherit', marginTop: 12
-            }}
-          >
-            📋 Buat Laporan Pertanggungjawaban (LPJ)
-          </button>
+        {/* Action buttons — inline on desktop, fixed bottom on mobile */}
+        {hasActions && (
+          isMobile ? (
+            <div style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0,
+              background: '#fff', borderTop: '1px solid #EBEBEB',
+              padding: '12px 16px',
+              paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
+              zIndex: 90, display: 'flex', gap: 10,
+            }}>
+              {canApprove() && (
+                <>
+                  <button onClick={() => setShowRejectModal(true)}
+                    style={{ flex: 1, padding: '13px 8px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Tolak / Hold
+                  </button>
+                  <button onClick={handleApprove} disabled={actionLoading}
+                    style={{ flex: 2, padding: '13px 8px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+                    {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
+                  </button>
+                </>
+              )}
+              {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
+                <button onClick={() => navigate(`/lpj/${id}`)}
+                  style={{ flex: 1, padding: '13px 8px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  📋 Buat LPJ
+                </button>
+              )}
+            </div>
+          ) : (
+            <div>
+              {canApprove() && (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                  <button onClick={() => setShowRejectModal(true)}
+                    style={{ flex: 1, padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Tolak / Hold / Revisi
+                  </button>
+                  <button onClick={handleApprove} disabled={actionLoading}
+                    style={{ flex: 2, padding: '14px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+                    {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
+                  </button>
+                </div>
+              )}
+              {pengajuan.status === 'approved_ceo' && pengajuan.submitted_by === profile?.id && (
+                <button onClick={() => navigate(`/lpj/${id}`)}
+                  style={{ width: '100%', padding: '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  📋 Buat Laporan Pertanggungjawaban (LPJ)
+                </button>
+              )}
+            </div>
+          )
         )}
       </div>
 
       {/* REJECT MODAL */}
       {showRejectModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-        }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, maxWidth: '90vw' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#111', marginBottom: 20 }}>Tolak Pengajuan</div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: isMobile ? '16px 16px 0 0' : 16,
+            padding: isMobile ? '24px 20px' : 32,
+            paddingBottom: isMobile ? 'calc(24px + env(safe-area-inset-bottom))' : 32,
+            width: isMobile ? '100%' : 480,
+            maxWidth: '100%',
+          }}>
+            {/* drag handle mobile */}
+            {isMobile && (
+              <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />
+            )}
+
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 18 }}>Tolak Pengajuan</div>
 
             <div style={{ marginBottom: 16 }}>
               <div className="form-label">Tipe</div>
@@ -400,20 +460,17 @@ export default function DetailPengajuanPage() {
                 {[
                   { value: 'revision', label: 'Perlu Revisi' },
                   { value: 'hold', label: 'Hold' },
-                  { value: 'rejected', label: 'Tolak Permanen' },
+                  { value: 'rejected', label: 'Tolak' },
                 ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setRejectType(opt.value)}
+                  <button key={opt.value} onClick={() => setRejectType(opt.value)}
                     style={{
-                      flex: 1, padding: '10px 8px',
+                      flex: 1, padding: '10px 6px',
                       background: rejectType === opt.value ? '#FFF0F0' : '#F5F5F5',
                       border: `1.5px solid ${rejectType === opt.value ? '#C0272D' : 'transparent'}`,
                       borderRadius: 8, fontSize: 12, fontWeight: 600,
                       color: rejectType === opt.value ? '#C0272D' : '#555',
                       cursor: 'pointer', fontFamily: 'inherit'
-                    }}
-                  >
+                    }}>
                     {opt.label}
                   </button>
                 ))}
@@ -422,8 +479,7 @@ export default function DetailPengajuanPage() {
 
             <div className="form-group">
               <label className="form-label">Alasan *</label>
-              <textarea
-                className="form-input"
+              <textarea className="form-input"
                 placeholder="Jelaskan alasan penolakan / revisi / hold"
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
@@ -431,18 +487,13 @@ export default function DetailPengajuanPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-              <button
-                onClick={() => { setShowRejectModal(false); setRejectReason('') }}
-                style={{ flex: 1, padding: '12px', background: '#F5F5F5', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}
-              >
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button onClick={() => { setShowRejectModal(false); setRejectReason('') }}
+                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Batal
               </button>
-              <button
-                onClick={handleReject}
-                disabled={!rejectReason.trim() || actionLoading}
-                style={{ flex: 1, padding: '12px', background: '#C0272D', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: !rejectReason.trim() ? 0.5 : 1 }}
-              >
+              <button onClick={handleReject} disabled={!rejectReason.trim() || actionLoading}
+                style={{ flex: 1, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: !rejectReason.trim() ? 0.5 : 1 }}>
                 {actionLoading ? 'Memproses...' : 'Konfirmasi'}
               </button>
             </div>
