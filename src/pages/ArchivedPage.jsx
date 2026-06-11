@@ -45,6 +45,7 @@ export default function ArchivedPage() {
   const canAccess = ['cfo', 'finance', 'ceo'].includes(profile?.role)
 
   useEffect(() => {
+    if (!profile) return // tunggu profile loaded dulu
     if (!canAccess) { navigate('/dashboard'); return }
     fetchArchived()
     const handleResize = () => setIsMobile(window.innerWidth < 768)

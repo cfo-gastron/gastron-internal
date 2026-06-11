@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import FormPengajuanPage from './pages/FormPengajuanPage'
 import DetailPengajuanPage from './pages/DetailPengajuanPage'
 import LpjPage from './pages/LpjPage'
+import ArchivedPage from './pages/ArchivedPage'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuth()
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/pengajuan/:id" element={<ProtectedRoute><DetailPengajuanPage /></ProtectedRoute>} />
       <Route path="/lpj/:pengajuanId" element={<ProtectedRoute><LpjPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/arsip" element={<ProtectedRoute><ArchivedPage /></ProtectedRoute>} />
     </Routes>
   )
 }
