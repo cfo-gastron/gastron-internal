@@ -316,7 +316,7 @@ export default function DetailPengajuanPage() {
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Penerima Pembayaran</div>
             {penerima.map((p) => (
               <div key={p.id} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 12 : 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12 }}>
                   {[
                     { label: 'Nama', value: p.nama_penerima },
                     { label: 'Bank', value: p.bank },
@@ -389,7 +389,7 @@ export default function DetailPengajuanPage() {
               position: 'fixed', bottom: 0, left: 0, right: 0,
               background: '#fff', borderTop: '1px solid #EBEBEB',
               padding: '12px 16px',
-              paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
+              paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
               zIndex: 90, display: 'flex', gap: 10,
             }}>
               {canApprove() && (
@@ -443,11 +443,10 @@ export default function DetailPengajuanPage() {
             background: '#fff',
             borderRadius: isMobile ? '16px 16px 0 0' : 16,
             padding: isMobile ? '24px 20px' : 32,
-            paddingBottom: isMobile ? 'calc(24px + env(safe-area-inset-bottom))' : 32,
+            paddingBottom: isMobile ? 'calc(32px + env(safe-area-inset-bottom))' : 32,
             width: isMobile ? '100%' : 480,
             maxWidth: '100%',
           }}>
-            {/* drag handle mobile */}
             {isMobile && (
               <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />
             )}
