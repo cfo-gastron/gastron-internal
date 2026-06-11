@@ -327,7 +327,7 @@ export default function DashboardPage() {
           position: 'fixed', bottom: 0, left: 0, right: 0,
           background: '#fff', borderTop: '1px solid #EBEBEB',
           display: 'flex', zIndex: 100,
-          paddingBottom: 'env(safe-area-inset-bottom)',
+          paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
         }}>
           {[
             { icon: '⊞', label: 'Dashboard', path: '/dashboard' },
