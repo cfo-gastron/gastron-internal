@@ -259,8 +259,8 @@ export default function LpjPage() {
 
     const { error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
     if (updateErr) { setError('Gagal approve: ' + updateErr.message); setApproving(false); return }
-    await fetchData()
     setApproving(false)
+    navigate(`/pengajuan/${pengajuanId}`)
   }
 
   async function handleSubmit() {
