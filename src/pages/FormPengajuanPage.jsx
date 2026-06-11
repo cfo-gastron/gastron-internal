@@ -159,29 +159,50 @@ export default function FormPengajuanPage() {
     setLoading(false)
   }
 
-  const cardStyle = { background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '24px', marginBottom: 16 }
+  const cardStyle = {
+    background: '#fff',
+    borderRadius: 12,
+    border: '1px solid #F0F0F0',
+    padding: isMobile ? '16px' : '24px',
+    marginBottom: 16,
+  }
 
   return (
-    <div style={{ background: '#F8F8F8', minHeight: '100vh' }}>
+    // Wrapper: full width, no margin, no padding yang aneh
+    <div style={{ background: '#F8F8F8', minHeight: '100vh', width: '100%', boxSizing: 'border-box' }}>
 
       {/* HEADER */}
       <div style={{
-        background: '#fff', borderBottom: '1px solid #F0F0F0',
-        padding: isMobile ? '16px' : '16px 32px',
-        display: 'flex', alignItems: 'center', gap: 12,
-        position: 'sticky', top: 0, zIndex: 40,
+        background: '#fff',
+        borderBottom: '1px solid #F0F0F0',
+        padding: isMobile ? '14px 16px' : '16px 32px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        position: 'sticky',
+        top: 0,
+        zIndex: 40,
+        boxSizing: 'border-box',
+        width: '100%',
       }}>
         <button onClick={() => navigate('/dashboard')}
-          style={{ background: 'none', border: 'none', color: '#999', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+          style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1, flexShrink: 0 }}>
           ←
         </button>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>Buat Pengajuan</div>
-        <div style={{ marginLeft: 'auto', background: '#F0F0F0', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: '#555' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Buat Pengajuan</div>
+        <div style={{ marginLeft: 'auto', background: '#FFF0F0', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: '#C0272D' }}>
           {division}
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? '16px 16px 100px' : '24px 32px 40px', maxWidth: 800, margin: '0 auto' }}>
+      {/* CONTENT */}
+      <div style={{
+        padding: isMobile ? '16px 16px 120px' : '24px 32px 80px',
+        maxWidth: isMobile ? '100%' : 800,
+        margin: '0 auto',
+        boxSizing: 'border-box',
+        width: '100%',
+      }}>
 
         {error && (
           <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>
@@ -189,7 +210,7 @@ export default function FormPengajuanPage() {
           </div>
         )}
 
-        {/* Info */}
+        {/* Info Pengajuan */}
         <div style={cardStyle}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 16 }}>Informasi Pengajuan</div>
 
@@ -205,12 +226,16 @@ export default function FormPengajuanPage() {
               {TIPE_OPTIONS.map(opt => (
                 <button key={opt.value} type="button" onClick={() => setTipe(opt.value)}
                   style={{
-                    flex: 1, padding: '11px 8px',
+                    flex: 1,
+                    padding: '11px 8px',
                     background: tipe === opt.value ? '#FFF0F0' : '#F5F5F5',
                     border: `1.5px solid ${tipe === opt.value ? '#C0272D' : 'transparent'}`,
-                    borderRadius: 10, fontSize: isMobile ? 11 : 12, fontWeight: 600,
+                    borderRadius: 10,
+                    fontSize: isMobile ? 12 : 13,
+                    fontWeight: 600,
                     color: tipe === opt.value ? '#C0272D' : '#555',
-                    cursor: 'pointer', fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}>
                   {opt.label}
                 </button>
@@ -255,41 +280,54 @@ export default function FormPengajuanPage() {
             <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Item Pengajuan</div>
             <button onClick={addItem}
               style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-              + Tambah
+              + Tambah Item
             </button>
           </div>
 
           {items.map((item, idx) => (
             <div key={idx} style={{ background: '#FAFAFA', borderRadius: 10, padding: '14px', marginBottom: 10, position: 'relative' }}>
               <div style={{ fontSize: 11, color: '#999', marginBottom: 8 }}>Item #{idx + 1}</div>
-              <div className="form-group" style={{ marginBottom: 10 }}>
-                <input className="form-input" placeholder="Nama item" value={item.uraian}
-                  onChange={e => updateItem(idx, 'uraian', e.target.value)} />
+
+              {/* Uraian — full width */}
+              <div style={{ marginBottom: 10 }}>
+                <input className="form-input" placeholder="Nama item / uraian"
+                  value={item.uraian} onChange={e => updateItem(idx, 'uraian', e.target.value)} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+
+              {/* Qty + Satuan — 2 kolom */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 <div>
                   <div className="form-label">Qty</div>
                   <input className="form-input" type="number" min="1" value={item.qty}
-                    onChange={e => updateItem(idx, 'qty', e.target.value)} style={{ textAlign: 'center' }} />
+                    onChange={e => updateItem(idx, 'qty', e.target.value)}
+                    style={{ textAlign: 'center' }} />
                 </div>
                 <div>
                   <div className="form-label">Satuan</div>
-                  <select className="form-input" value={item.satuan} onChange={e => updateItem(idx, 'satuan', e.target.value)}>
+                  <select className="form-input" value={item.satuan}
+                    onChange={e => updateItem(idx, 'satuan', e.target.value)}>
                     {SATUAN_OPTIONS.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div>
-                  <div className="form-label">Harga</div>
-                  <input className="form-input" type="number" min="0" placeholder="0" value={item.harga_satuan || ''}
-                    onChange={e => updateItem(idx, 'harga_satuan', e.target.value)} style={{ textAlign: 'right' }} />
-                </div>
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#C0272D' }}>
-                {formatRp(Number(item.qty) * Number(item.harga_satuan))}
+
+              {/* Harga — full width biar ga terlalu sempit di mobile */}
+              <div style={{ marginBottom: 8 }}>
+                <div className="form-label">Harga Satuan (Rp)</div>
+                <input className="form-input" type="number" min="0" placeholder="0"
+                  value={item.harga_satuan || ''}
+                  onChange={e => updateItem(idx, 'harga_satuan', e.target.value)}
+                  style={{ textAlign: 'right' }} />
               </div>
+
+              {/* Subtotal */}
+              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>
+                = {formatRp(Number(item.qty) * Number(item.harga_satuan))}
+              </div>
+
               {items.length > 1 && (
                 <button onClick={() => removeItem(idx)}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
               )}
             </div>
           ))}
@@ -315,15 +353,16 @@ export default function FormPengajuanPage() {
 
           {penerima.map((p, idx) => (
             <div key={idx} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 10, position: 'relative' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Stack 1 kolom di mobile, 2 kolom di desktop */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Nama Penerima</label>
-                  <input className="form-input" placeholder="Nama vendor"
+                  <input className="form-input" placeholder="Nama vendor / supplier"
                     value={p.nama_penerima} onChange={e => updatePenerima(idx, 'nama_penerima', e.target.value)} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Bank</label>
-                  <input className="form-input" placeholder="BCA / Mandiri"
+                  <input className="form-input" placeholder="BCA / Mandiri / BRI"
                     value={p.bank} onChange={e => updatePenerima(idx, 'bank', e.target.value)} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -333,13 +372,13 @@ export default function FormPengajuanPage() {
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Atas Nama</label>
-                  <input className="form-input" placeholder="Nama pemilik"
+                  <input className="form-input" placeholder="Nama pemilik rekening"
                     value={p.atas_nama} onChange={e => updatePenerima(idx, 'atas_nama', e.target.value)} />
                 </div>
               </div>
               {penerima.length > 1 && (
                 <button onClick={() => removePenerima(idx)}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
               )}
             </div>
           ))}
@@ -348,12 +387,14 @@ export default function FormPengajuanPage() {
         {/* Attachments */}
         <div style={cardStyle} onPaste={handlePaste}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 4 }}>Lampiran</div>
-          <div style={{ fontSize: 12, color: '#999', marginBottom: 14 }}>Upload foto nota, invoice, atau dokumen pendukung.</div>
+          <div style={{ fontSize: 12, color: '#999', marginBottom: 14 }}>
+            Upload foto nota, invoice, atau dokumen pendukung.
+          </div>
 
           <label style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             border: '1.5px dashed #E0E0E0', borderRadius: 10, padding: '20px',
-            cursor: 'pointer', marginBottom: 12
+            cursor: 'pointer', marginBottom: 12,
           }}>
             <div style={{ fontSize: 22, marginBottom: 6 }}>📎</div>
             <div style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>Klik untuk upload</div>
@@ -363,29 +404,33 @@ export default function FormPengajuanPage() {
 
           {attachments.map((file, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFAFA', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span>{file.type?.includes('pdf') ? '📄' : '🖼️'}</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>{file.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ flexShrink: 0 }}>{file.type?.includes('pdf') ? '📄' : '🖼️'}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
                   <div style={{ fontSize: 11, color: '#999' }}>{(file.size / 1024).toFixed(1)} KB</div>
                 </div>
               </div>
               <button onClick={() => removeAttachment(idx)}
-                style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 16 }}>×</button>
+                style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, flexShrink: 0, marginLeft: 8 }}>×</button>
             </div>
           ))}
         </div>
       </div>
 
-      {/* STICKY BOTTOM SUBMIT */}
+      {/* STICKY BOTTOM */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: '#fff', borderTop: '1px solid #F0F0F0',
-        padding: isMobile ? '12px 16px' : '16px 32px',
-        paddingBottom: isMobile ? 'max(12px, env(safe-area-inset-bottom))' : '16px',
-        display: 'flex', gap: 12, zIndex: 40,
-        maxWidth: isMobile ? '100%' : 800,
-        margin: '0 auto',
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: '#fff',
+        borderTop: '1px solid #F0F0F0',
+        padding: '12px 16px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+        display: 'flex',
+        gap: 10,
+        zIndex: 40,
       }}>
         <button onClick={() => navigate('/dashboard')}
           style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
