@@ -82,7 +82,7 @@ export default function DetailPengajuanPage() {
       if (pengajuan.division === 'FIN' && role === 'cfo') return true
     }
     if (status === 'approved_step1' && role === 'cfo') return true
-    if (status === 'approved_cfo' && role === 'ceo') return true
+    if (status === 'approved_cfo' && (role === 'ceo' || role === 'cfo' || role === 'finance')) return true
 
     return false
   }
