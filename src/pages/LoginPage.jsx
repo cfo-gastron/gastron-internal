@@ -28,7 +28,7 @@ export default function LoginPage() {
             style={{ width: 64, height: 64, objectFit: 'contain', marginBottom: 16 }}
           />
           <div style={{ fontSize: 24, fontWeight: 700, color: '#111' }}>
-            <span style={{ color: '#C0272D' }}>G</span>astron
+            <span style={{ color: '#C0272D' }}>Gastron</span>
           </div>
           <div style={{ fontSize: 12, color: '#999', marginTop: 4, letterSpacing: 1, textTransform: 'uppercase' }}>
             Sistem Pengajuan Internal
