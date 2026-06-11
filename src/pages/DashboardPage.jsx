@@ -47,7 +47,6 @@ export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState('/dashboard')
 
   const isApprover = ['cfo', 'ceo', 'cao', 'coo'].includes(profile?.role)
-  const isFinance = profile?.role === 'finance'
 
   useEffect(() => {
     fetchPengajuan()
@@ -57,7 +56,7 @@ export default function DashboardPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from('pengajuan')
-      .select('*, submitted_by_user:users!pengajuan_submitted_by_fkey(full_name, email)')
+      .select('*')
       .order('created_at', { ascending: false })
     if (!error) setPengajuan(data || [])
     setLoading(false)
@@ -67,13 +66,12 @@ export default function DashboardPage() {
     total: pengajuan.length,
     pending: pengajuan.filter(p => ['submitted', 'approved_step1', 'approved_cfo'].includes(p.status)).length,
     approved: pengajuan.filter(p => p.status === 'approved_ceo').length,
-    totalNominal: pengajuan.reduce((s, p) => s + Number(p.total_pengajuan || 0), 0),
   }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
 
-      {/* SIDEBAR — desktop only */}
+      {/* SIDEBAR */}
       <div style={{
         width: 240,
         background: '#fff',
@@ -85,20 +83,22 @@ export default function DashboardPage() {
         zIndex: 50,
       }} className="sidebar-desktop">
 
-        {/* Logo */}
         <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #F5F5F5' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+            <img
+              src="/logo-gastron.png"
+              alt="Gastron"
+              style={{ width: 32, height: 32, objectFit: 'contain', mixBlendMode: 'multiply' }}
+            />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>
-                <span style={{ color: '#C0272D' }}>G</span>astron
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>
+                Gastron
               </div>
               <div style={{ fontSize: 10, color: '#999', letterSpacing: 0.5 }}>Sistem Pengajuan</div>
             </div>
           </div>
         </div>
 
-        {/* Nav */}
         <nav style={{ padding: '16px 12px', flex: 1 }}>
           {NAV_ITEMS.map(item => (
             <button
@@ -128,7 +128,6 @@ export default function DashboardPage() {
           ))}
         </nav>
 
-        {/* Profile */}
         <div style={{ padding: '16px 20px', borderTop: '1px solid #F5F5F5' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <img
@@ -157,10 +156,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <div style={{ flex: 1, marginLeft: 240, padding: '32px', minHeight: '100vh' }}>
 
-        {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>
             {isApprover ? 'Semua Pengajuan' : 'Pengajuan Saya'}
@@ -170,13 +167,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
           {[
             { label: 'Total Pengajuan', value: stats.total, color: '#111' },
             { label: 'Menunggu Review', value: stats.pending, color: '#B8860B' },
             { label: 'Transferred', value: stats.approved, color: '#2E7D32' },
-            { label: 'Total Nominal', value: formatRp(stats.totalNominal), color: '#C0272D', small: true },
           ].map((s, i) => (
             <div key={i} style={{
               background: '#fff',
@@ -187,14 +182,13 @@ export default function DashboardPage() {
               <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
                 {s.label}
               </div>
-              <div style={{ fontSize: s.small ? 18 : 28, fontWeight: 700, color: s.color }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: s.color }}>
                 {s.value}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Table */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden' }}>
           <div style={{ padding: '20px 24px', borderBottom: '1px solid #F5F5F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>Daftar Pengajuan</div>
@@ -261,7 +255,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {pengajuan.map((p, i) => (
+                {pengajuan.map((p) => (
                   <tr
                     key={p.id}
                     style={{ borderBottom: '1px solid #F8F8F8', cursor: 'pointer' }}
@@ -306,7 +300,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* BOTTOM NAV — mobile */}
       <div className="bottom-nav">
         {NAV_ITEMS.map(item => (
           <button
@@ -328,7 +321,6 @@ export default function DashboardPage() {
         @media (max-width: 767px) {
           .sidebar-desktop { display: none !important; }
           div[style*="marginLeft: 240px"] { margin-left: 0 !important; padding: 16px 16px 80px !important; }
-          div[style*="gridTemplateColumns: repeat(4"] { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style>
     </div>
