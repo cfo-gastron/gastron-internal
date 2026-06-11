@@ -389,7 +389,7 @@ export default function DetailPengajuanPage() {
               position: 'fixed', bottom: 0, left: 0, right: 0,
               background: '#fff', borderTop: '1px solid #EBEBEB',
               padding: '12px 16px',
-              paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
+              paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))',
               zIndex: 90, display: 'flex', gap: 10,
             }}>
               {canApprove() && (
@@ -443,7 +443,7 @@ export default function DetailPengajuanPage() {
             background: '#fff',
             borderRadius: isMobile ? '16px 16px 0 0' : 16,
             padding: isMobile ? '24px 20px' : 32,
-            paddingBottom: isMobile ? 'calc(32px + env(safe-area-inset-bottom))' : 32,
+            paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32,
             width: isMobile ? '100%' : 480,
             maxWidth: '100%',
           }}>
