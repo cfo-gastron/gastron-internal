@@ -35,7 +35,7 @@ function formatDate(d) {
 }
 
 export default function ArchivedPage() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
   const [loading, setLoading] = useState(true)
@@ -45,13 +45,13 @@ export default function ArchivedPage() {
   const canAccess = ['cfo', 'finance', 'ceo'].includes(profile?.role)
 
   useEffect(() => {
-    if (!profile) return // tunggu profile loaded dulu
+    if (authLoading) return // tunggu auth selesai load
     if (!canAccess) { navigate('/dashboard'); return }
     fetchArchived()
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [authLoading])
 
   async function fetchArchived() {
     setLoading(true)

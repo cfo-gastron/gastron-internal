@@ -1,6 +1,6 @@
 // DashboardPage.jsx — full updated
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -70,7 +70,34 @@ export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState('/dashboard')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
-  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const touchStartY = useRef(0)
+  const touchCurrentY = useRef(0)
+  const [pullDistance, setPullDistance] = useState(0)
+  const PULL_THRESHOLD = 70
+
+  function handleTouchStart(e) {
+    if (window.scrollY > 0) return
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  function handleTouchMove(e) {
+    if (window.scrollY > 0) return
+    touchCurrentY.current = e.touches[0].clientY
+    const dist = Math.max(0, Math.min(touchCurrentY.current - touchStartY.current, 100))
+    setPullDistance(dist)
+  }
+
+  async function handleTouchEnd() {
+    if (pullDistance >= PULL_THRESHOLD && !refreshing) {
+      setRefreshing(true)
+      setPullDistance(0)
+      await fetchPengajuan()
+      setRefreshing(false)
+    } else {
+      setPullDistance(0)
+    }
+  }
 
   useEffect(() => {
     fetchPengajuan()
@@ -166,7 +193,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            <button onClick={signOut}
+            <button onClick={() => setShowLogoutModal(true)}
               style={{ width: '100%', padding: '8px', background: '#F5F5F5', border: 'none', borderRadius: 8, fontSize: 12, color: '#888', cursor: 'pointer', fontFamily: 'inherit' }}>
               Keluar
             </button>
@@ -175,12 +202,31 @@ export default function DashboardPage() {
       )}
 
       {/* MAIN CONTENT */}
-      <div style={{
-        flex: 1,
-        marginLeft: isMobile ? 0 : 240,
-        padding: isMobile ? '20px 16px 90px' : '32px',
-        minHeight: '100vh',
-      }}>
+      <div
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+        style={{
+          flex: 1,
+          marginLeft: isMobile ? 0 : 240,
+          padding: isMobile ? '20px 16px 90px' : '32px',
+          minHeight: '100vh',
+        }}>
+
+        {/* Pull to refresh indicator */}
+        {isMobile && (pullDistance > 0 || refreshing) && (
+          <div style={{
+            textAlign: 'center',
+            padding: '8px 0',
+            marginTop: -16,
+            marginBottom: 8,
+            fontSize: 12,
+            color: pullDistance >= 70 || refreshing ? '#C0272D' : '#999',
+            transition: 'color 0.2s',
+          }}>
+            {refreshing ? '🔄 Memperbarui...' : pullDistance >= 70 ? '↑ Lepas untuk refresh' : '↓ Tarik untuk refresh'}
+          </div>
+        )}
 
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -327,7 +373,7 @@ export default function DashboardPage() {
               {item.label}
             </button>
           ))}
-          <button onClick={signOut}
+          <button onClick={() => setShowLogoutModal(true)}
             style={{
               flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
               padding: '10px 0', gap: 4, background: 'transparent', border: 'none',
@@ -336,6 +382,41 @@ export default function DashboardPage() {
             <span style={{ fontSize: 20 }}>↩</span>
             Keluar
           </button>
+        </div>
+      )}
+      {/* LOGOUT MODAL */}
+      {showLogoutModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 200
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: isMobile ? '16px 16px 0 0' : 16,
+            padding: isMobile ? '28px 20px' : 32,
+            paddingBottom: isMobile ? 'max(32px, calc(20px + env(safe-area-inset-bottom)))' : 32,
+            width: isMobile ? '100%' : 360,
+          }}>
+            {isMobile && (
+              <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />
+            )}
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8, textAlign: 'center' }}>
+              Yakin mau logout?
+            </div>
+            <div style={{ fontSize: 13, color: '#999', textAlign: 'center', marginBottom: 24 }}>
+              Kamu akan keluar dari akun ini
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowLogoutModal(false)}
+                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Batal
+              </button>
+              <button onClick={() => { setShowLogoutModal(false); signOut() }}
+                style={{ flex: 1, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
