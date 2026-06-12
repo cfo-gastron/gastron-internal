@@ -5,6 +5,7 @@ import SelectRolePage from './pages/SelectRolePage'
 import DashboardPage from './pages/DashboardPage'
 import FormPengajuanPage from './pages/FormPengajuanPage'
 import DetailPengajuanPage from './pages/DetailPengajuanPage'
+import EditPengajuanPage from './pages/EditPengajuanPage'
 import LpjPage from './pages/LpjPage'
 import ArchivedPage from './pages/ArchivedPage'
 
@@ -32,9 +33,10 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/pengajuan/baru" element={<ProtectedRoute><FormPengajuanPage /></ProtectedRoute>} />
       <Route path="/pengajuan/:id" element={<ProtectedRoute><DetailPengajuanPage /></ProtectedRoute>} />
+      <Route path="/pengajuan/:id/edit" element={<ProtectedRoute><EditPengajuanPage /></ProtectedRoute>} />
       <Route path="/lpj/:pengajuanId" element={<ProtectedRoute><LpjPage /></ProtectedRoute>} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
       <Route path="/arsip" element={<ProtectedRoute><ArchivedPage /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
 }
