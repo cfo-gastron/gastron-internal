@@ -307,7 +307,11 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
     const sigData = sigBase64s[ai]
     if (sigData) {
       try {
-        doc.addImage(sigData, 'PNG', ax + 6, y + 7, ttdW - 12, 14, undefined, 'FAST')
+        // Render kecil dan center biar tidak melebar
+        const sigW = 28
+        const sigH = 12
+        const sigX = ax + (ttdW - sigW) / 2
+        doc.addImage(sigData, 'PNG', sigX, y + 7, sigW, sigH, undefined, 'FAST')
       } catch {}
     } else {
       // Placeholder kosong kalau belum approve
