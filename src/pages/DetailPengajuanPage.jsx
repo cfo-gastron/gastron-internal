@@ -123,14 +123,12 @@ export default function DetailPengajuanPage() {
     return false
   }
 
-  // Pengaju bisa resubmit kalau revision
   function canResubmit() {
     if (!pengajuan) return false
     if (!isOwner) return false
     return pengajuan.status === 'revision'
   }
 
-  // Pengaju bisa release hold
   function canReleaseHold() {
     if (!pengajuan) return false
     if (!isOwner) return false
@@ -179,7 +177,6 @@ export default function DetailPengajuanPage() {
     setActionLoading(false)
   }
 
-  // Resubmit langsung (dari hold atau revision tanpa edit)
   async function handleResubmit() {
     setActionLoading(true)
     await supabase.from('pengajuan').update({
@@ -198,17 +195,16 @@ export default function DetailPengajuanPage() {
     setActionLoading(false)
   }
 
-  // Edit & resubmit — navigate ke form edit
   function handleEditResubmit() {
-  setShowHoldModal(false)      // tambah ini
-  setShowRejectModal(false)    // tambah ini
-  navigate(`/pengajuan/${id}/edit`)
+    setShowHoldModal(false)
+    setShowRejectModal(false)
+    navigate(`/pengajuan/${id}/edit`)
   }
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold()
+  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive
 
   const ActionButtons = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -265,10 +261,10 @@ export default function DetailPengajuanPage() {
         </button>
       )}
 
-      {/* Archive */}
-      {canArchive && !isMobile && (
+      {/* Archive — selalu tampil untuk canArchive, tanpa cek isMobile */}
+      {canArchive && (
         <button onClick={handleArchive} disabled={archiving}
-          style={{ width: '100%', padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', opacity: archiving ? 0.7 : 1 }}>
+          style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', opacity: archiving ? 0.7 : 1 }}>
           {archiving ? 'Mengarsipkan...' : '🗂 Arsipkan Pengajuan'}
         </button>
       )}
@@ -296,7 +292,7 @@ export default function DetailPengajuanPage() {
       )}
 
       {/* MAIN */}
-      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 160px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
 
         {/* Top bar */}
         {isMobile ? (
