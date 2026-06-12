@@ -200,7 +200,9 @@ export default function DetailPengajuanPage() {
 
   // Edit & resubmit — navigate ke form edit
   function handleEditResubmit() {
-    navigate(`/pengajuan/${id}/edit`)
+  setShowHoldModal(false)      // tambah ini
+  setShowRejectModal(false)    // tambah ini
+  navigate(`/pengajuan/${id}/edit`)
   }
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
