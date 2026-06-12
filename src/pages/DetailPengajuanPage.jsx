@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
+import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 
 const STATUS_LABEL = {
   draft: 'Draft',
@@ -261,6 +263,12 @@ export default function DetailPengajuanPage() {
         </button>
       )}
 
+      {/* Download Surat PDF */}
+<button
+  onClick={() => generatePengajuanPdf(pengajuan, items, penerima, logs)}
+  style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #C0272D', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#C0272D', cursor: 'pointer', fontFamily: 'inherit' }}>
+  📄 Download Surat Pengajuan
+</button>
       {/* Archive — selalu tampil untuk canArchive, tanpa cek isMobile */}
       {canArchive && (
         <button onClick={handleArchive} disabled={archiving}
