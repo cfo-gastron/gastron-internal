@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
-import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 
 const STATUS_LABEL = {
   draft: 'Draft',
