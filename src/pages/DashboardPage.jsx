@@ -75,6 +75,7 @@ export default function DashboardPage() {
   const touchStartY = useRef(0)
   const touchCurrentY = useRef(0)
   const [pullDistance, setPullDistance] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
   const PULL_THRESHOLD = 70
 
   function handleTouchStart(e) {

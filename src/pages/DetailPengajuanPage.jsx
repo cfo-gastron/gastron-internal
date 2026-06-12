@@ -34,7 +34,7 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function getApproveLabel(status, role) {
+function getApproveLabel(status) {
   if (status === 'approved_cfo') return '✓ Final Approve (as CEO)'
   return '✓ Approve'
 }
@@ -59,15 +59,17 @@ export default function DetailPengajuanPage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
 
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showHoldModal, setShowHoldModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
   const [archiving, setArchiving] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
   const canArchive = ['cfo', 'finance', 'ceo'].includes(profile?.role)
+  const isOwner = pengajuan?.submitted_by === profile?.id
 
   async function handleArchive() {
-    if (!window.confirm('Arsipkan pengajuan ini? Pengajuan tidak akan muncul di dashboard tapi masih bisa diakses di halaman Arsip.')) return
+    if (!window.confirm('Arsipkan pengajuan ini?')) return
     setArchiving(true)
     await supabase.from('pengajuan').update({ is_archived: true }).eq('id', id)
     navigate('/arsip')
@@ -76,7 +78,7 @@ export default function DetailPengajuanPage() {
 
   useEffect(() => {
     fetchDetail()
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    const handleResize = () => setIsMobile(window.innerWidth < 1024)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [id])
@@ -112,15 +114,27 @@ export default function DetailPengajuanPage() {
     return false
   }
 
-  // CFO dan Finance bisa akses LPJ untuk pengajuan apapun yang sudah approved_ceo
   function canAccessLpj() {
     if (!pengajuan) return false
     if (pengajuan.status !== 'approved_ceo') return false
     const role = profile?.role
     if (role === 'cfo' || role === 'finance') return true
-    // Pengaju asli juga tetap bisa
     if (pengajuan.submitted_by === profile?.id) return true
     return false
+  }
+
+  // Pengaju bisa resubmit kalau revision
+  function canResubmit() {
+    if (!pengajuan) return false
+    if (!isOwner) return false
+    return pengajuan.status === 'revision'
+  }
+
+  // Pengaju bisa release hold
+  function canReleaseHold() {
+    if (!pengajuan) return false
+    if (!isOwner) return false
+    return pengajuan.status === 'hold'
   }
 
   async function handleApprove() {
@@ -140,10 +154,8 @@ export default function DetailPengajuanPage() {
     }
     await supabase.from('pengajuan').update(updateData).eq('id', id)
     await supabase.from('approval_logs').insert({
-      pengajuan_id: id,
-      action: 'approved',
-      action_by: profile.id,
-      role_at_time: profile.role,
+      pengajuan_id: id, action: 'approved',
+      action_by: profile.id, role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
     fetchDetail()
@@ -154,17 +166,12 @@ export default function DetailPengajuanPage() {
     if (!rejectReason.trim()) return
     setActionLoading(true)
     await supabase.from('pengajuan').update({
-      status: rejectType,
-      rejection_type: rejectType,
-      rejection_reason: rejectReason,
+      status: rejectType, rejection_type: rejectType, rejection_reason: rejectReason,
     }).eq('id', id)
     await supabase.from('approval_logs').insert({
-      pengajuan_id: id,
-      action: rejectType,
-      action_by: profile.id,
-      role_at_time: profile.role,
-      rejection_type: rejectType,
-      catatan: rejectReason,
+      pengajuan_id: id, action: rejectType,
+      action_by: profile.id, role_at_time: profile.role,
+      rejection_type: rejectType, catatan: rejectReason,
     })
     setShowRejectModal(false)
     setRejectReason('')
@@ -172,27 +179,110 @@ export default function DetailPengajuanPage() {
     setActionLoading(false)
   }
 
+  // Resubmit langsung (dari hold atau revision tanpa edit)
+  async function handleResubmit() {
+    setActionLoading(true)
+    await supabase.from('pengajuan').update({
+      status: 'submitted',
+      rejection_type: null,
+      rejection_reason: null,
+      submitted_at: new Date().toISOString(),
+    }).eq('id', id)
+    await supabase.from('approval_logs').insert({
+      pengajuan_id: id, action: 'submitted',
+      action_by: profile.id, role_at_time: profile.role,
+      catatan: `Diajukan ulang oleh ${profile.full_name}`,
+    })
+    setShowHoldModal(false)
+    fetchDetail()
+    setActionLoading(false)
+  }
+
+  // Edit & resubmit — navigate ke form edit
+  function handleEditResubmit() {
+    navigate(`/pengajuan/${id}/edit`)
+  }
+
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  const hasActions = canApprove() || canAccessLpj()
+  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold()
+
+  const ActionButtons = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      {/* Approver actions */}
+      {canApprove() && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => setShowRejectModal(true)}
+            style={{ flex: 1, padding: isMobile ? '13px 8px' : '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Tolak / Hold / Revisi
+          </button>
+          <button onClick={handleApprove} disabled={actionLoading}
+            style={{ flex: 2, padding: isMobile ? '13px 8px' : '14px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+            {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status)}
+          </button>
+        </div>
+      )}
+
+      {/* Pengaju: revision → edit & resubmit */}
+      {canResubmit() && (
+        <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: '16px' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#B8860B', marginBottom: 4 }}>Pengajuan perlu direvisi</div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Silakan edit pengajuan atau ajukan ulang tanpa perubahan</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleEditResubmit}
+              style={{ flex: 1, padding: '11px 8px', background: '#fff', border: '1.5px solid #FFE082', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#B8860B', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ✏️ Edit & Resubmit
+            </button>
+            <button onClick={handleResubmit} disabled={actionLoading}
+              style={{ flex: 1, padding: '11px 8px', background: '#B8860B', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+              {actionLoading ? 'Memproses...' : '↩ Ajukan Ulang'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pengaju: hold → release */}
+      {canReleaseHold() && (
+        <div style={{ background: '#F3E5F5', borderRadius: 12, border: '1px solid #CE93D8', padding: '16px' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#6A1B9A', marginBottom: 4 }}>Pengajuan sedang ditahan</div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Jika kondisi sudah memungkinkan, kamu bisa release dan ajukan ulang</div>
+          <button onClick={() => setShowHoldModal(true)}
+            style={{ width: '100%', padding: '12px', background: '#6A1B9A', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+            🔓 Release Hold
+          </button>
+        </div>
+      )}
+
+      {/* LPJ */}
+      {canAccessLpj() && (
+        <button onClick={() => navigate(`/lpj/${id}`)}
+          style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+          📋 Buat / Lihat Laporan Pertanggungjawaban (LPJ)
+        </button>
+      )}
+
+      {/* Archive */}
+      {canArchive && !isMobile && (
+        <button onClick={handleArchive} disabled={archiving}
+          style={{ width: '100%', padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', opacity: archiving ? 0.7 : 1 }}>
+          {archiving ? 'Mengarsipkan...' : '🗂 Arsipkan Pengajuan'}
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
 
-      {/* SIDEBAR — desktop only */}
+      {/* SIDEBAR desktop */}
       {!isMobile && (
-        <div style={{
-          width: 240, background: '#fff', borderRight: '1px solid #F0F0F0',
-          position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
-          display: 'flex', flexDirection: 'column', padding: '24px 20px',
-        }}>
+        <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50, display: 'flex', flexDirection: 'column', padding: '24px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
             <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>
-                <span style={{ color: '#C0272D' }}>G</span>astron
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}><span style={{ color: '#C0272D' }}>G</span>astron</div>
               <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
             </div>
           </div>
@@ -204,28 +294,19 @@ export default function DetailPengajuanPage() {
       )}
 
       {/* MAIN */}
-      <div style={{
-        flex: 1,
-        marginLeft: isMobile ? 0 : 240,
-        padding: isMobile ? '16px 16px 100px' : '32px',
-        maxWidth: isMobile ? '100%' : 860,
-      }}>
+      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
 
-        {/* Mobile top bar */}
+        {/* Top bar */}
         {isMobile ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <button onClick={() => navigate('/dashboard')}
-              style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
-              ←
-            </button>
+            <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>←</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
               <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
               <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
             </div>
           </div>
         ) : (
-          <button onClick={() => navigate('/dashboard')}
-            style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
+          <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
             ← Kembali
           </button>
         )}
@@ -274,9 +355,7 @@ export default function DetailPengajuanPage() {
 
         {/* Items */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
-            Item Pengajuan
-          </div>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Item Pengajuan</div>
           {isMobile ? (
             <div>
               {items.map((item, idx) => (
@@ -286,17 +365,13 @@ export default function DetailPengajuanPage() {
                       <div style={{ fontSize: 13, fontWeight: 500, color: '#111', marginBottom: 4 }}>
                         <span style={{ color: '#BBB', marginRight: 6 }}>{idx + 1}.</span>{item.uraian}
                       </div>
-                      <div style={{ fontSize: 12, color: '#888' }}>
-                        {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}
-                      </div>
+                      <div style={{ fontSize: 12, color: '#888' }}>{item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>
-                      {formatRp(item.jumlah)}
-                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{formatRp(item.jumlah)}</div>
                   </div>
                 </div>
               ))}
-              <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#555' }}>Total Pengajuan</span>
                 <span style={{ fontSize: 16, fontWeight: 700, color: '#C0272D' }}>{formatRp(pengajuan.total_pengajuan)}</span>
               </div>
@@ -412,54 +487,12 @@ export default function DetailPengajuanPage() {
               background: '#fff', borderTop: '1px solid #EBEBEB',
               padding: '12px 16px',
               paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))',
-              zIndex: 90, display: 'flex', gap: 10,
+              zIndex: 90,
             }}>
-              {canApprove() && (
-                <>
-                  <button onClick={() => setShowRejectModal(true)}
-                    style={{ flex: 1, padding: '13px 8px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Tolak / Hold
-                  </button>
-                  <button onClick={handleApprove} disabled={actionLoading}
-                    style={{ flex: 2, padding: '13px 8px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
-                    {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
-                  </button>
-                </>
-              )}
-              {canAccessLpj() && (
-                <button onClick={() => navigate(`/lpj/${id}`)}
-                  style={{ flex: 1, padding: '13px 8px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  📋 Buat / Lihat LPJ
-                </button>
-              )}
+              <ActionButtons />
             </div>
           ) : (
-            <div>
-              {canApprove() && (
-                <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                  <button onClick={() => setShowRejectModal(true)}
-                    style={{ flex: 1, padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Tolak / Hold / Revisi
-                  </button>
-                  <button onClick={handleApprove} disabled={actionLoading}
-                    style={{ flex: 2, padding: '14px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
-                    {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status, profile?.role)}
-                  </button>
-                </div>
-              )}
-              {canAccessLpj() && (
-                <button onClick={() => navigate(`/lpj/${id}`)}
-                  style={{ width: '100%', padding: '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  📋 Buat / Lihat Laporan Pertanggungjawaban (LPJ)
-                </button>
-              )}
-              {canArchive && (
-                <button onClick={handleArchive} disabled={archiving}
-                  style={{ width: '100%', padding: '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', marginTop: 8, opacity: archiving ? 0.7 : 1 }}>
-                  {archiving ? 'Mengarsipkan...' : '🗂 Arsipkan Pengajuan'}
-                </button>
-              )}
-            </div>
+            <ActionButtons />
           )
         )}
       </div>
@@ -468,60 +501,66 @@ export default function DetailPengajuanPage() {
       {showRejectModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{
-            background: '#fff',
-            borderRadius: isMobile ? '16px 16px 0 0' : 16,
+            background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16,
             padding: isMobile ? '24px 20px' : 32,
             paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32,
             width: isMobile ? '100%' : 480,
-            maxWidth: '100%',
           }}>
-            {isMobile && (
-              <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />
-            )}
-
+            {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
             <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 18 }}>Tolak Pengajuan</div>
-
             <div style={{ marginBottom: 16 }}>
               <div className="form-label">Tipe</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {[
-                  { value: 'revision', label: 'Perlu Revisi' },
-                  { value: 'hold', label: 'Hold' },
-                  { value: 'rejected', label: 'Tolak' },
-                ].map(opt => (
+                {[{ value: 'revision', label: 'Perlu Revisi' }, { value: 'hold', label: 'Hold' }, { value: 'rejected', label: 'Tolak' }].map(opt => (
                   <button key={opt.value} onClick={() => setRejectType(opt.value)}
-                    style={{
-                      flex: 1, padding: '10px 6px',
-                      background: rejectType === opt.value ? '#FFF0F0' : '#F5F5F5',
-                      border: `1.5px solid ${rejectType === opt.value ? '#C0272D' : 'transparent'}`,
-                      borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      color: rejectType === opt.value ? '#C0272D' : '#555',
-                      cursor: 'pointer', fontFamily: 'inherit'
-                    }}>
+                    style={{ flex: 1, padding: '10px 6px', background: rejectType === opt.value ? '#FFF0F0' : '#F5F5F5', border: `1.5px solid ${rejectType === opt.value ? '#C0272D' : 'transparent'}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: rejectType === opt.value ? '#C0272D' : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
                     {opt.label}
                   </button>
                 ))}
               </div>
             </div>
-
             <div className="form-group">
               <label className="form-label">Alasan *</label>
-              <textarea className="form-input"
-                placeholder="Jelaskan alasan penolakan / revisi / hold"
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-                rows={4}
-              />
+              <textarea className="form-input" placeholder="Jelaskan alasan penolakan / revisi / hold" value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={4} />
             </div>
-
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
               <button onClick={() => { setShowRejectModal(false); setRejectReason('') }}
-                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-                Batal
-              </button>
+                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
               <button onClick={handleReject} disabled={!rejectReason.trim() || actionLoading}
                 style={{ flex: 1, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: !rejectReason.trim() ? 0.5 : 1 }}>
                 {actionLoading ? 'Memproses...' : 'Konfirmasi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HOLD RELEASE MODAL */}
+      {showHoldModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{
+            background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16,
+            padding: isMobile ? '24px 20px' : 32,
+            paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32,
+            width: isMobile ? '100%' : 440,
+          }}>
+            {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8 }}>🔓 Release Hold</div>
+            <div style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>Pilih tindak lanjut untuk pengajuan ini</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={handleEditResubmit}
+                style={{ width: '100%', padding: '14px', background: '#F5F5F5', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#333', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                ✏️ Edit dulu, lalu ajukan ulang
+                <div style={{ fontSize: 11, color: '#999', fontWeight: 400, marginTop: 2 }}>Ubah item, jumlah, atau keterangan sebelum submit</div>
+              </button>
+              <button onClick={handleResubmit} disabled={actionLoading}
+                style={{ width: '100%', padding: '14px', background: '#6A1B9A', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', opacity: actionLoading ? 0.7 : 1 }}>
+                ↩ Ajukan ulang langsung
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 400, marginTop: 2 }}>Tanpa perubahan, langsung submit ulang</div>
+              </button>
+              <button onClick={() => setShowHoldModal(false)}
+                style={{ width: '100%', padding: '13px', background: 'transparent', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#999', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Batal
               </button>
             </div>
           </div>
