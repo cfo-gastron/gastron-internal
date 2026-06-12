@@ -93,15 +93,17 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
 
   // ── Fetch semua gambar parallel ──────────────────────────────────────────────
   const approvers = getApprovers(pengajuan, logs)
-  const isApproved = pengajuan.status === 'approved_ceo'
+  const isApproved = ['approved_step1', 'approved_cfo', 'approved_ceo'].includes(pengajuan.status)
+  const approvedLogs = logs.filter(l => l.action === 'approved')
 
   const [logoBase64, ...sigBase64s] = await Promise.all([
     fetchImageAsBase64(`${SIGNATURES_BUCKET}/logo_gastron.png`),
-    ...approvers.map(a =>
-      isApproved
+    ...approvers.map((a, ai) => {
+      const hasApproved = approvedLogs.length > ai
+      return hasApproved
         ? fetchImageAsBase64(`${SIGNATURES_BUCKET}/${a.sigFile}`)
         : Promise.resolve(null)
-    ),
+    }),
   ])
 
   // ── HEADER BAR ────────────────────────────────────────────────────────────────
@@ -328,8 +330,8 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
     doc.text(displayName, ax + 4, y + ttdBoxH - 4)
   })
 
-  // Status watermark kalau belum final approve
-  if (!isApproved) {
+  // Watermark kalau belum ada approval sama sekali
+  if (approvedLogs.length === 0) {
     doc.setTextColor(220, 220, 220)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(32)
