@@ -62,6 +62,7 @@ export default function DetailPengajuanPage() {
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
   const [archiving, setArchiving] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const canArchive = ['cfo', 'finance', 'ceo'].includes(profile?.role)
 
