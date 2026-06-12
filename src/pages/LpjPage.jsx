@@ -190,7 +190,7 @@ export default function LpjPage() {
   const [submitting, setSubmitting] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState(null)
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   const [realisasi, setRealisasi] = useState({})
   const [notas, setNotas] = useState([{ nama_nota: '', file: null, itemIds: [] }])
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')

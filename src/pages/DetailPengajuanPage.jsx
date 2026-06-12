@@ -56,7 +56,7 @@ export default function DetailPengajuanPage() {
   const [attachments, setAttachments] = useState([])
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
