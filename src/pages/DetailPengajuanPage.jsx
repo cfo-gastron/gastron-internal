@@ -56,6 +56,7 @@ export default function DetailPengajuanPage() {
   const [penerima, setPenerima] = useState([])
   const [attachments, setAttachments] = useState([])
   const [logs, setLogs] = useState([])
+  const [hasLpj, setHasLpj] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
 
@@ -86,18 +87,20 @@ export default function DetailPengajuanPage() {
 
   async function fetchDetail() {
     setLoading(true)
-    const [p, i, pn, a, l] = await Promise.all([
+    const [p, i, pn, a, l, lpj] = await Promise.all([
       supabase.from('pengajuan').select('*').eq('id', id).single(),
       supabase.from('pengajuan_items').select('*').eq('pengajuan_id', id).order('urutan'),
       supabase.from('pengajuan_penerima').select('*').eq('pengajuan_id', id),
       supabase.from('pengajuan_attachments').select('*').eq('pengajuan_id', id),
       supabase.from('approval_logs').select('*, user:users!approval_logs_action_by_fkey(full_name, role)').eq('pengajuan_id', id).order('created_at'),
+      supabase.from('lpj').select('id').eq('pengajuan_id', id).maybeSingle(),
     ])
     setPengajuan(p.data)
     setItems(i.data || [])
     setPenerima(pn.data || [])
     setAttachments(a.data || [])
     setLogs(l.data || [])
+    setHasLpj(!!lpj.data)
     setLoading(false)
   }
 
@@ -254,21 +257,22 @@ export default function DetailPengajuanPage() {
         </div>
       )}
 
-      {/* LPJ */}
+      {/* LPJ — label dinamis */}
       {canAccessLpj() && (
         <button onClick={() => navigate(`/lpj/${id}`)}
           style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-          📋 Buat / Lihat Laporan Pertanggungjawaban (LPJ)
+          📋 {hasLpj ? 'Lihat' : 'Buat'} Laporan Pertanggungjawaban (LPJ)
         </button>
       )}
 
       {/* Download Surat PDF */}
-<button
-  onClick={() => generatePengajuanPdf(pengajuan, items, penerima, logs)}
-  style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #C0272D', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#C0272D', cursor: 'pointer', fontFamily: 'inherit' }}>
-  📄 Download Surat Pengajuan
-</button>
-      {/* Archive — selalu tampil untuk canArchive, tanpa cek isMobile */}
+      <button
+        onClick={() => generatePengajuanPdf(pengajuan, items, penerima, logs)}
+        style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #C0272D', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#C0272D', cursor: 'pointer', fontFamily: 'inherit' }}>
+        📄 Download Surat Pengajuan
+      </button>
+
+      {/* Archive */}
       {canArchive && (
         <button onClick={handleArchive} disabled={archiving}
           style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', opacity: archiving ? 0.7 : 1 }}>
