@@ -14,13 +14,21 @@ function formatDate(d) {
   })
 }
 
-function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isMobile, onBack }) {
+function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isMobile, onBack, onEdit }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
 
   const canApproveLpj = () => {
     if (lpj.status === 'submitted' && (role === 'finance' || role === 'cfo')) return true
     if (lpj.status === 'approved_finance' && role === 'cfo') return true
+    return false
+  }
+
+  // Bisa edit kalau status masih submitted dan (pengaju original atau CFO/Finance)
+  const canEditLpj = () => {
+    if (lpj.status !== 'submitted') return false
+    if (role === 'cfo' || role === 'finance') return true
+    if (lpj.submitted_by === profile?.id) return true
     return false
   }
 
@@ -49,9 +57,24 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
         </div>
       ) : null}
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111' }}>Laporan Pertanggungjawaban</div>
-        <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan?.judul} · {pengajuan?.kode_surat}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 }}>
+        <div>
+          <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111' }}>Laporan Pertanggungjawaban</div>
+          <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan?.judul} · {pengajuan?.kode_surat}</div>
+        </div>
+        {canEditLpj() && (
+          <button
+            onClick={onEdit}
+            style={{
+              background: '#FFF0F0', border: '1.5px solid #C0272D', borderRadius: 10,
+              padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#C0272D',
+              cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            ✏️ Edit LPJ
+          </button>
+        )}
       </div>
 
       {/* Status banner */}
@@ -192,8 +215,9 @@ export default function LpjPage() {
   const [error, setError] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   const [realisasi, setRealisasi] = useState({})
-  const [notas, setNotas] = useState([{ nama_nota: '', file: null, itemIds: [] }])
+  const [notas, setNotas] = useState([{ nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }])
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')
+  const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -219,6 +243,43 @@ export default function LpjPage() {
     setLoading(false)
   }
 
+  // Pre-fill form dari data LPJ existing saat masuk edit mode
+  function enterEditMode() {
+    if (!existingLpj) return
+
+    // Rebuild realisasi dari lpj_nota_items
+    const newRealisasi = {}
+    items.forEach(item => { newRealisasi[item.id] = { qty: item.qty, harga: item.harga_satuan } })
+    existingLpj.lpj_nota?.forEach(nota => {
+      nota.lpj_nota_items?.forEach(ni => {
+        newRealisasi[ni.pengajuan_item_id] = {
+          qty: ni.realisasi_qty,
+          harga: ni.realisasi_harga,
+        }
+      })
+    })
+    setRealisasi(newRealisasi)
+
+    // Rebuild notas dari lpj_nota existing
+    const rebuiltNotas = existingLpj.lpj_nota?.map(nota => ({
+      nama_nota: nota.nama_nota,
+      file: null, // file baru kalau mau replace, null = pakai existing
+      existingFileUrl: nota.file_url || null,
+      existingFileName: nota.file_name || null,
+      itemIds: nota.lpj_nota_items?.map(ni => ni.pengajuan_item_id) || [],
+    })) || [{ nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }]
+
+    setNotas(rebuiltNotas)
+    setMetodePengembalian(existingLpj.metode_pengembalian || 'transfer')
+    setIsEditing(true)
+    setError(null)
+  }
+
+  function cancelEdit() {
+    setIsEditing(false)
+    setError(null)
+  }
+
   const totalRealisasi = items.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
@@ -229,7 +290,7 @@ export default function LpjPage() {
     setRealisasi(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }))
   }
 
-  function addNota() { setNotas([...notas, { nama_nota: '', file: null, itemIds: [] }]) }
+  function addNota() { setNotas([...notas, { nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }]) }
   function removeNota(idx) { if (notas.length === 1) return; setNotas(notas.filter((_, i) => i !== idx)) }
   function updateNota(idx, field, value) { const u = [...notas]; u[idx][field] = value; setNotas(u) }
 
@@ -272,14 +333,31 @@ export default function LpjPage() {
     navigate(`/pengajuan/${pengajuanId}`)
   }
 
-  async function handleSubmit() {
+  function validateForm() {
     const itemsValid = items.every(item => Number(realisasi[item.id]?.qty || 0) > 0)
-    if (!itemsValid) { setError('Qty realisasi semua item harus diisi'); return }
-    if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return }
+    if (!itemsValid) { setError('Qty realisasi semua item harus diisi'); return false }
+    if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return false }
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
     const unassigned = items.filter(item => !allAssignedItems.has(item.id))
-    if (unassigned.length > 0) { setError(`Item "${unassigned[0].uraian}" belum di-assign ke nota manapun`); return }
+    if (unassigned.length > 0) { setError(`Item "${unassigned[0].uraian}" belum di-assign ke nota manapun`); return false }
+    return true
+  }
 
+  // Helper: upload file nota, return { fileUrl, fileName }
+  async function uploadNotaFile(lpjId, nota) {
+    if (!nota.file) return { fileUrl: nota.existingFileUrl || null, fileName: nota.existingFileName || null }
+    const ext = nota.file.name?.split('.').pop() || 'jpg'
+    const path = `${lpjId}/${Date.now()}.${ext}`
+    const { data: uploadData } = await supabase.storage.from('lpj-nota').upload(path, nota.file)
+    if (uploadData) {
+      const { data: urlData } = supabase.storage.from('lpj-nota').getPublicUrl(path)
+      return { fileUrl: urlData.publicUrl, fileName: nota.file.name || 'nota.jpg' }
+    }
+    return { fileUrl: nota.existingFileUrl || null, fileName: nota.existingFileName || null }
+  }
+
+  async function handleSubmit() {
+    if (!validateForm()) return
     setSubmitting(true); setError(null)
     try {
       const { data: lpj, error: lpjErr } = await supabase.from('lpj').insert({
@@ -290,43 +368,331 @@ export default function LpjPage() {
       }).select().single()
       if (lpjErr) throw lpjErr
 
-      for (const nota of notas) {
-        let fileUrl = null, fileName = null
-        if (nota.file) {
-          const ext = nota.file.name?.split('.').pop() || 'jpg'
-          const path = `${lpj.id}/${Date.now()}.${ext}`
-          const { data: uploadData } = await supabase.storage.from('lpj-nota').upload(path, nota.file)
-          if (uploadData) {
-            const { data: urlData } = supabase.storage.from('lpj-nota').getPublicUrl(path)
-            fileUrl = urlData.publicUrl; fileName = nota.file.name || 'nota.jpg'
-          }
-        }
-        const totalNota = nota.itemIds.reduce((sum, itemId) => {
-          const r = realisasi[itemId]
-          return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
-        }, 0)
-        const { data: notaData, error: notaErr } = await supabase.from('lpj_nota').insert({
-          lpj_id: lpj.id, nama_nota: nota.nama_nota, total_nota: totalNota, file_url: fileUrl, file_name: fileName,
-        }).select().single()
-        if (notaErr) throw notaErr
-        if (nota.itemIds.length > 0) {
-          const notaItems = nota.itemIds.map(itemId => {
-            const origItem = items.find(i => i.id === itemId)
-            const r = realisasi[itemId]
-            return { nota_id: notaData.id, pengajuan_item_id: itemId, uraian: origItem?.uraian || '', satuan: origItem?.satuan || '', qty_pengajuan: origItem?.qty || 0, harga_pengajuan: origItem?.harga_satuan || 0, realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0) }
-          })
-          await supabase.from('lpj_nota_items').insert(notaItems)
-        }
-      }
+      await insertNotas(lpj.id)
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
+  }
+
+  // Update LPJ existing — hapus nota lama, insert baru
+  async function handleUpdate() {
+    if (!validateForm()) return
+    setSubmitting(true); setError(null)
+    try {
+      const lpjId = existingLpj.id
+
+      // Hapus semua nota lama (cascade ke lpj_nota_items otomatis via FK, atau manual)
+      const { data: oldNotas } = await supabase.from('lpj_nota').select('id').eq('lpj_id', lpjId)
+      if (oldNotas?.length > 0) {
+        const oldNotaIds = oldNotas.map(n => n.id)
+        await supabase.from('lpj_nota_items').delete().in('nota_id', oldNotaIds)
+        await supabase.from('lpj_nota').delete().eq('lpj_id', lpjId)
+      }
+
+      // Update header LPJ
+      const { error: updateErr } = await supabase.from('lpj').update({
+        total_realisasi: totalRealisasi,
+        metode_pengembalian: sisaDana > 0 ? metodePengembalian : null,
+      }).eq('id', lpjId)
+      if (updateErr) throw updateErr
+
+      // Insert nota baru
+      await insertNotas(lpjId)
+
+      setIsEditing(false)
+      await fetchData()
+    } catch (err) { setError(err.message || 'Terjadi kesalahan') }
+    setSubmitting(false)
+  }
+
+  // Shared helper: insert notas + items ke lpj_id tertentu
+  async function insertNotas(lpjId) {
+    for (const nota of notas) {
+      const { fileUrl, fileName } = await uploadNotaFile(lpjId, nota)
+      const totalNota = nota.itemIds.reduce((sum, itemId) => {
+        const r = realisasi[itemId]
+        return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
+      }, 0)
+      const { data: notaData, error: notaErr } = await supabase.from('lpj_nota').insert({
+        lpj_id: lpjId, nama_nota: nota.nama_nota, total_nota: totalNota,
+        file_url: fileUrl, file_name: fileName,
+      }).select().single()
+      if (notaErr) throw notaErr
+      if (nota.itemIds.length > 0) {
+        const notaItems = nota.itemIds.map(itemId => {
+          const origItem = items.find(i => i.id === itemId)
+          const r = realisasi[itemId]
+          return {
+            nota_id: notaData.id, pengajuan_item_id: itemId,
+            uraian: origItem?.uraian || '', satuan: origItem?.satuan || '',
+            qty_pengajuan: origItem?.qty || 0, harga_pengajuan: origItem?.harga_satuan || 0,
+            realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0),
+          }
+        })
+        await supabase.from('lpj_nota_items').insert(notaItems)
+      }
+    }
   }
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
   const backTo = () => navigate(`/pengajuan/${pengajuanId}`)
+
+  // Render form (dipakai untuk create baru maupun edit mode)
+  const renderForm = (isEditMode = false) => (
+    <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+
+      {/* Mobile top bar */}
+      {isMobile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button onClick={isEditMode ? cancelEdit : backTo} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+            <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111' }}>
+          {isEditMode ? 'Edit Laporan Pertanggungjawaban' : 'Laporan Pertanggungjawaban'}
+        </div>
+        <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan.judul} · {pengajuan.kode_surat}</div>
+        {isEditMode && (
+          <div style={{ marginTop: 8, background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#B8860B', display: 'inline-block' }}>
+            ✏️ Mode Edit — perubahan akan menggantikan data LPJ sebelumnya
+          </div>
+        )}
+      </div>
+
+      {/* Summary */}
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 24, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 12 : 20 }}>
+          {[
+            { label: 'Total Anggaran', value: formatRp(pengajuan.total_pengajuan), color: '#111' },
+            { label: 'Realisasi', value: formatRp(totalRealisasi), color: '#2E7D32' },
+            { label: 'Sisa Dana', value: formatRp(Math.abs(sisaDana)), color: sisaDana > 0 ? '#C0272D' : '#2E7D32' },
+          ].map(({ label, value, color }) => (
+            <div key={label}>
+              <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: isMobile ? 14 : 18, fontWeight: 700, color }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>
+      )}
+
+      {/* Realisasi item */}
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Realisasi Item</div>
+        {isMobile ? (
+          <div>
+            {items.map(item => {
+              const r = realisasi[item.id] || {}
+              const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+              return (
+                <div key={item.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 4 }}>{item.uraian}</div>
+                  <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Qty Realisasi</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                          style={{ flex: 1, padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'center', fontFamily: 'inherit' }} />
+                        <span style={{ fontSize: 11, color: '#999' }}>{item.satuan}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Harga Realisasi</div>
+                      <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>= {formatRp(subtotal)}</div>
+                </div>
+              )
+            })}
+            <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#555' }}>Total Realisasi</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>{formatRp(totalRealisasi)}</span>
+            </div>
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#FAFAFA' }}>
+                {['Item', 'Qty Pengajuan', 'Qty Realisasi', 'Harga Realisasi', 'Subtotal'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: h === 'Item' ? 'left' : 'right', borderBottom: '1px solid #F0F0F0' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => {
+                const r = realisasi[item.id] || {}
+                const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+                return (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>
+                      <div>{item.uraian}</div>
+                      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#999', textAlign: 'right' }}>{item.qty} {item.satuan}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                          style={{ width: 70, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
+                        <span style={{ fontSize: 12, color: '#999' }}>{item.satuan}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
+                        style={{ width: 110, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(subtotal)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #111' }}>
+                <td colSpan={4} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Realisasi</td>
+                <td style={{ padding: '12px 16px', fontSize: 16, fontWeight: 700, color: '#C0272D', textAlign: 'right' }}>{formatRp(totalRealisasi)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+
+      {/* Notas */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
+          <button onClick={addNota} style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Nota</button>
+        </div>
+
+        {notas.map((nota, idx) => (
+          <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 20, marginBottom: 14 }} onPaste={e => handlePaste(idx, e)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Nota #{idx + 1}</div>
+              {notas.length > 1 && <button onClick={() => removeNota(idx)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20 }}>×</button>}
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 14 }}>
+              <label className="form-label">Nama Toko / Keterangan Nota</label>
+              <input className="form-input" placeholder="Contoh: Toko ABC, Indomaret" value={nota.nama_nota} onChange={e => updateNota(idx, 'nama_nota', e.target.value)} />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {items.map(item => {
+                  const r = realisasi[item.id] || {}
+                  const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+                  const checked = nota.itemIds.includes(item.id)
+                  const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
+                  const disabled = assignedToOther && !checked
+                  return (
+                    <label key={item.id} style={{
+                      display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
+                      padding: '10px 12px', borderRadius: 8,
+                      background: checked ? '#FFF5F5' : disabled ? '#F5F5F5' : '#FAFAFA',
+                      border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}`,
+                      opacity: disabled ? 0.5 : 1,
+                    }}>
+                      <input type="checkbox" checked={checked} disabled={disabled}
+                        onChange={() => !disabled && toggleItemInNota(idx, item.id)}
+                        style={{ accentColor: '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333' }}>
+                          {item.uraian}
+                          {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA', marginLeft: 6 }}>(sudah di nota lain)</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong></div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="form-label" style={{ marginBottom: 8 }}>Foto / Scan Nota</div>
+              {/* Kalau ada file baru */}
+              {nota.file ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FAFAFA', borderRadius: 8, padding: '10px 14px' }}>
+                  <span>{nota.file.type?.includes('pdf') ? '📄' : '🖼️'}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{nota.file.name || 'Gambar dari clipboard'}</div>
+                    <div style={{ fontSize: 11, color: '#999' }}>{nota.file.size ? `${(nota.file.size / 1024).toFixed(1)} KB` : ''}</div>
+                  </div>
+                  <button onClick={() => updateNota(idx, 'file', null)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                </div>
+              ) : nota.existingFileUrl ? (
+                /* Kalau ada file lama dari DB */
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F7FF', borderRadius: 8, padding: '10px 14px', border: '1px solid #BBDEFB' }}>
+                  <span>📎</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#1565C0' }}>{nota.existingFileName || 'File nota'}</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>File sebelumnya — upload baru untuk mengganti</div>
+                  </div>
+                  <a href={nota.existingFileUrl} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 12, color: '#1565C0', textDecoration: 'none', flexShrink: 0 }}>Lihat</a>
+                  <label style={{ fontSize: 12, color: '#555', cursor: 'pointer', flexShrink: 0, background: '#E3F2FD', padding: '4px 8px', borderRadius: 6 }}>
+                    Ganti
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileChange(idx, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              ) : (
+                <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed #E0E0E0', borderRadius: 10, padding: 20, cursor: 'pointer' }}>
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>📎</div>
+                  <div style={{ fontSize: 13, color: '#555' }}>Upload atau paste gambar</div>
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>PDF, JPG, PNG</div>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileChange(idx, e)} style={{ display: 'none' }} />
+                </label>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Sisa dana */}
+      {sisaDana > 0 && (
+        <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: isMobile ? '16px' : 20, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#B8860B', marginBottom: 12 }}>Sisa dana {formatRp(sisaDana)} — pilih metode pengembalian</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {['transfer', 'cash'].map(m => (
+              <button key={m} onClick={() => setMetodePengembalian(m)}
+                style={{ flex: 1, padding: 10, background: metodePengembalian === m ? '#FFF0F0' : '#fff', border: `1.5px solid ${metodePengembalian === m ? '#C0272D' : '#E0E0E0'}`, borderRadius: 8, fontSize: 13, fontWeight: 600, color: metodePengembalian === m ? '#C0272D' : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {m === 'transfer' ? '🏦 Transfer' : '💵 Cash'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Submit buttons */}
+      {isMobile ? (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90, display: 'flex', gap: 10 }}>
+          <button onClick={isEditMode ? cancelEdit : backTo} style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={isEditMode ? handleUpdate : handleSubmit} disabled={submitting} style={{ flex: 2, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? 'Menyimpan...' : isEditMode ? 'Simpan Perubahan' : 'Submit LPJ'}
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button onClick={isEditMode ? cancelEdit : backTo} style={{ flex: 1, padding: 14, background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={isEditMode ? handleUpdate : handleSubmit} disabled={submitting} style={{ flex: 2, padding: 14, background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? 'Menyimpan...' : isEditMode ? 'Simpan Perubahan' : 'Submit LPJ'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
@@ -341,247 +707,20 @@ export default function LpjPage() {
               <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
             </div>
           </div>
-          <button onClick={backTo} style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            ← Kembali
+          <button onClick={isEditing ? cancelEdit : backTo} style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ← {isEditing ? 'Batalkan Edit' : 'Kembali'}
           </button>
         </div>
       )}
 
-      {existingLpj ? (
+      {existingLpj && !isEditing ? (
         <LpjViewMode
           pengajuan={pengajuan} lpj={existingLpj} profile={profile}
           onApprove={handleApproveLpj} approving={approving} error={error}
-          isMobile={isMobile} onBack={backTo}
+          isMobile={isMobile} onBack={backTo} onEdit={enterEditMode}
         />
       ) : (
-        <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
-
-          {/* Mobile top bar */}
-          {isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <button onClick={backTo} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111' }}>Laporan Pertanggungjawaban</div>
-            <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan.judul} · {pengajuan.kode_surat}</div>
-          </div>
-
-          {/* Summary */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 24, marginBottom: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 12 : 20 }}>
-              {[
-                { label: 'Total Anggaran', value: formatRp(pengajuan.total_pengajuan), color: '#111' },
-                { label: 'Realisasi', value: formatRp(totalRealisasi), color: '#2E7D32' },
-                { label: 'Sisa Dana', value: formatRp(Math.abs(sisaDana)), color: sisaDana > 0 ? '#C0272D' : '#2E7D32' },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: isMobile ? 14 : 18, fontWeight: 700, color }}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {error && (
-            <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>
-          )}
-
-          {/* Realisasi item */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Realisasi Item</div>
-            {isMobile ? (
-              <div>
-                {items.map(item => {
-                  const r = realisasi[item.id] || {}
-                  const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
-                  return (
-                    <div key={item.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 4 }}>{item.uraian}</div>
-                      <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Qty Realisasi</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                              style={{ flex: 1, padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'center', fontFamily: 'inherit' }} />
-                            <span style={{ fontSize: 11, color: '#999' }}>{item.satuan}</span>
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Harga Realisasi</div>
-                          <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
-                            style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>= {formatRp(subtotal)}</div>
-                    </div>
-                  )
-                })}
-                <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#555' }}>Total Realisasi</span>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>{formatRp(totalRealisasi)}</span>
-                </div>
-              </div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#FAFAFA' }}>
-                    {['Item', 'Qty Pengajuan', 'Qty Realisasi', 'Harga Realisasi', 'Subtotal'].map(h => (
-                      <th key={h} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: h === 'Item' ? 'left' : 'right', borderBottom: '1px solid #F0F0F0' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => {
-                    const r = realisasi[item.id] || {}
-                    const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
-                    return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>
-                          <div>{item.uraian}</div>
-                          <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#999', textAlign: 'right' }}>{item.qty} {item.satuan}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                            <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                              style={{ width: 70, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
-                            <span style={{ fontSize: 12, color: '#999' }}>{item.satuan}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
-                            style={{ width: 110, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(subtotal)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid #111' }}>
-                    <td colSpan={4} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Realisasi</td>
-                    <td style={{ padding: '12px 16px', fontSize: 16, fontWeight: 700, color: '#C0272D', textAlign: 'right' }}>{formatRp(totalRealisasi)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            )}
-          </div>
-
-          {/* Notas */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
-              <button onClick={addNota} style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Nota</button>
-            </div>
-
-            {notas.map((nota, idx) => (
-              <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 20, marginBottom: 14 }} onPaste={e => handlePaste(idx, e)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Nota #{idx + 1}</div>
-                  {notas.length > 1 && <button onClick={() => removeNota(idx)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20 }}>×</button>}
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 14 }}>
-                  <label className="form-label">Nama Toko / Keterangan Nota</label>
-                  <input className="form-input" placeholder="Contoh: Toko ABC, Indomaret" value={nota.nama_nota} onChange={e => updateNota(idx, 'nama_nota', e.target.value)} />
-                </div>
-
-                <div style={{ marginBottom: 14 }}>
-                  <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {items.map(item => {
-                      const r = realisasi[item.id] || {}
-                      const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
-                      const checked = nota.itemIds.includes(item.id)
-                      const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
-                      const disabled = assignedToOther && !checked
-                      return (
-                        <label key={item.id} style={{
-                          display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
-                          padding: '10px 12px', borderRadius: 8,
-                          background: checked ? '#FFF5F5' : disabled ? '#F5F5F5' : '#FAFAFA',
-                          border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}`,
-                          opacity: disabled ? 0.5 : 1,
-                        }}>
-                          <input type="checkbox" checked={checked} disabled={disabled}
-                            onChange={() => !disabled && toggleItemInNota(idx, item.id)}
-                            style={{ accentColor: '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333' }}>
-                              {item.uraian}
-                              {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA', marginLeft: 6 }}>(sudah di nota lain)</span>}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong></div>
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="form-label" style={{ marginBottom: 8 }}>Foto / Scan Nota</div>
-                  {nota.file ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FAFAFA', borderRadius: 8, padding: '10px 14px' }}>
-                      <span>{nota.file.type?.includes('pdf') ? '📄' : '🖼️'}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{nota.file.name || 'Gambar dari clipboard'}</div>
-                        <div style={{ fontSize: 11, color: '#999' }}>{nota.file.size ? `${(nota.file.size / 1024).toFixed(1)} KB` : ''}</div>
-                      </div>
-                      <button onClick={() => updateNota(idx, 'file', null)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
-                    </div>
-                  ) : (
-                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed #E0E0E0', borderRadius: 10, padding: 20, cursor: 'pointer' }}>
-                      <div style={{ fontSize: 20, marginBottom: 6 }}>📎</div>
-                      <div style={{ fontSize: 13, color: '#555' }}>Upload atau paste gambar</div>
-                      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>PDF, JPG, PNG</div>
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileChange(idx, e)} style={{ display: 'none' }} />
-                    </label>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Sisa dana */}
-          {sisaDana > 0 && (
-            <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: isMobile ? '16px' : 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#B8860B', marginBottom: 12 }}>Sisa dana {formatRp(sisaDana)} — pilih metode pengembalian</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                {['transfer', 'cash'].map(m => (
-                  <button key={m} onClick={() => setMetodePengembalian(m)}
-                    style={{ flex: 1, padding: 10, background: metodePengembalian === m ? '#FFF0F0' : '#fff', border: `1.5px solid ${metodePengembalian === m ? '#C0272D' : '#E0E0E0'}`, borderRadius: 8, fontSize: 13, fontWeight: 600, color: metodePengembalian === m ? '#C0272D' : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {m === 'transfer' ? '🏦 Transfer' : '💵 Cash'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Submit buttons */}
-          {isMobile ? (
-            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90, display: 'flex', gap: 10 }}>
-              <button onClick={backTo} style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
-              <button onClick={handleSubmit} disabled={submitting} style={{ flex: 2, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
-                {submitting ? 'Menyimpan...' : 'Submit LPJ'}
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={backTo} style={{ flex: 1, padding: 14, background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
-              <button onClick={handleSubmit} disabled={submitting} style={{ flex: 2, padding: 14, background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
-                {submitting ? 'Menyimpan...' : 'Submit LPJ'}
-              </button>
-            </div>
-          )}
-        </div>
+        renderForm(isEditing)
       )}
     </div>
   )
