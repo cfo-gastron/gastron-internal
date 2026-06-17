@@ -63,18 +63,18 @@ function LpjBadge({ lpjStatus, onClick }) {
 
 export default function DashboardPage() {
   const { profile, signOut } = useAuth()
+  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
   const [lpjMap, setLpjMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [activeNav, setActiveNav] = useState('/dashboard')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const touchStartY = useRef(0)
   const touchCurrentY = useRef(0)
   const [pullDistance, setPullDistance] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
   const PULL_THRESHOLD = 70
 
   function handleTouchStart(e) {
@@ -287,32 +287,60 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : isMobile ? (
-            <div style={{ padding: '8px 0' }}>
-              {pengajuan.map(p => (
-                <div key={p.id}
-                  onClick={() => navigate(`/pengajuan/${p.id}`)}
-                  style={{ padding: '14px 20px', borderBottom: '1px solid #F5F5F5', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1, marginRight: 12 }}>{p.judul}</div>
-                    <span className={`badge ${STATUS_CLASS[p.status] || 'badge-pending'}`} style={{ fontSize: 10, flexShrink: 0 }}>
-                      {STATUS_LABEL[p.status]}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ background: '#F0F0F0', color: '#555', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700 }}>{p.division}</span>
-                    {p.tipe === 'reimbursement' && (
-                      <span style={{ background: '#E3F2FD', color: '#1565C0', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700 }}>Reimburse</span>
-                    )}
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#C0272D' }}>{formatRp(p.total_pengajuan)}</span>
-                    <span style={{ fontSize: 11, color: '#BBB' }}>{formatDate(p.submitted_at || p.created_at)}</span>
-                  </div>
-                  {p.status === 'approved_ceo' && lpjMap[p.id] !== undefined && (
-                    <div style={{ marginTop: 8 }}>
-                      <LpjBadge lpjStatus={lpjMap[p.id]} onClick={() => navigate(`/lpj/${p.id}`)} />
+            <div style={{ padding: '4px 0' }}>
+              {pengajuan.map(p => {
+                const statusColors = {
+                  submitted:      { bg: '#FFF8E1', color: '#7A5C00' },
+                  approved_step1: { bg: '#E3F2FD', color: '#0C447C' },
+                  approved_cfo:   { bg: '#EDE7F6', color: '#4527A0' },
+                  approved_ceo:   { bg: '#E8F5E9', color: '#1B5E20' },
+                  revision:       { bg: '#FFF3E0', color: '#7A4200' },
+                  hold:           { bg: '#F3E5F5', color: '#4A148C' },
+                  rejected:       { bg: '#FFEBEE', color: '#7f1d1d' },
+                }
+                const sc = statusColors[p.status] || { bg: '#F5F5F5', color: '#555' }
+                const lpjConfig = {
+                  none:             { dot: '#C0272D', text: 'Butuh LPJ' },
+                  submitted:        { dot: '#EF9F27', text: 'LPJ menunggu approval' },
+                  approved_finance: { dot: '#185FA5', text: 'LPJ menunggu CFO' },
+                  closed:           { dot: '#3B6D11', text: 'LPJ selesai' },
+                }
+                const lpj = lpjMap[p.id] !== undefined ? lpjConfig[lpjMap[p.id]] || lpjConfig.none : null
+
+                return (
+                  <div key={p.id}
+                    onClick={() => navigate(`/pengajuan/${p.id}`)}
+                    style={{ padding: '14px 16px', borderBottom: '0.5px solid #F0F0F0', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#111', flex: 1, lineHeight: 1.3 }}>{p.judul}</div>
+                      <span style={{
+                        fontSize: 11, fontWeight: 500, padding: '3px 9px',
+                        borderRadius: 20, background: sc.bg, color: sc.color,
+                        whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>
+                        {STATUS_LABEL[p.status]}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <span style={{ background: '#F0F0F0', color: '#666', borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 500 }}>{p.division}</span>
+                      {p.tipe === 'reimbursement' && (
+                        <span style={{ background: '#E6F1FB', color: '#185FA5', borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 500, border: '0.5px solid #B5D4F4' }}>Reimburse</span>
+                      )}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#C0272D' }}>{formatRp(p.total_pengajuan)}</span>
+                      <span style={{ fontSize: 11, color: '#BBB', marginLeft: 'auto' }}>{formatDate(p.submitted_at || p.created_at)}</span>
+                    </div>
+                    {p.status === 'approved_ceo' && lpj && (
+                      <div
+                        onClick={e => { e.stopPropagation(); navigate(`/lpj/${p.id}`) }}
+                        style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid #F5F5F5', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: lpj.dot, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: '#888' }}>{lpj.text}</span>
+                        <span style={{ fontSize: 11, color: '#C0272D', marginLeft: 'auto' }}>Lihat LPJ →</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
