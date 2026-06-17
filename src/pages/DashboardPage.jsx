@@ -63,6 +63,7 @@ function LpjBadge({ lpjStatus, onClick }) {
 
 export default function DashboardPage() {
   const { profile, signOut } = useAuth()
+  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
   const [lpjMap, setLpjMap] = useState({})
