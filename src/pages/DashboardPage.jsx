@@ -63,7 +63,6 @@ function LpjBadge({ lpjStatus, onClick }) {
 
 export default function DashboardPage() {
   const { profile, signOut } = useAuth()
-  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
   const [lpjMap, setLpjMap] = useState({})
@@ -75,7 +74,6 @@ export default function DashboardPage() {
   const touchStartY = useRef(0)
   const touchCurrentY = useRef(0)
   const [pullDistance, setPullDistance] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
   const PULL_THRESHOLD = 70
 
   function handleTouchStart(e) {
