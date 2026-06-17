@@ -303,7 +303,7 @@ export default function DetailPengajuanPage() {
       )}
 
       {/* MAIN */}
-      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 160px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 280px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
 
         {/* Top bar */}
         {isMobile ? (

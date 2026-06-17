@@ -63,7 +63,6 @@ function LpjBadge({ lpjStatus, onClick }) {
 
 export default function DashboardPage() {
   const { profile, signOut } = useAuth()
-  const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
   const navigate = useNavigate()
   const [pengajuan, setPengajuan] = useState([])
   const [lpjMap, setLpjMap] = useState({})
@@ -75,7 +74,6 @@ export default function DashboardPage() {
   const touchStartY = useRef(0)
   const touchCurrentY = useRef(0)
   const [pullDistance, setPullDistance] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
   const PULL_THRESHOLD = 70
 
   function handleTouchStart(e) {
@@ -301,6 +299,9 @@ export default function DashboardPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ background: '#F0F0F0', color: '#555', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700 }}>{p.division}</span>
+                    {p.tipe === 'reimbursement' && (
+                      <span style={{ background: '#E3F2FD', color: '#1565C0', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700 }}>Reimburse</span>
+                    )}
                     <span style={{ fontSize: 12, fontWeight: 600, color: '#C0272D' }}>{formatRp(p.total_pengajuan)}</span>
                     <span style={{ fontSize: 11, color: '#BBB' }}>{formatDate(p.submitted_at || p.created_at)}</span>
                   </div>

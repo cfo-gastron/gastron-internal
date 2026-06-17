@@ -131,7 +131,8 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
   doc.setTextColor(...DARK)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  doc.text('SURAT PENGAJUAN', margin, y)
+  const judulPdf = pengajuan.tipe === 'reimbursement' ? 'SURAT REIMBURSEMENT' : 'SURAT PENGAJUAN KEBUTUHAN'
+  doc.text(judulPdf, margin, y)
 
   y += 4
   doc.setFillColor(...RED)
