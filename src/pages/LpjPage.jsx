@@ -24,7 +24,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
     return false
   }
 
-  // Bisa edit kalau status masih submitted dan (pengaju original atau CFO/Finance)
   const canEditLpj = () => {
     if (lpj.status !== 'submitted') return false
     if (role === 'cfo' || role === 'finance') return true
@@ -45,8 +44,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
 
   return (
     <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 100px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
-
-      {/* Top bar */}
       {isMobile ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
@@ -63,29 +60,17 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
           <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{pengajuan?.judul} · {pengajuan?.kode_surat}</div>
         </div>
         {canEditLpj() && (
-          <button
-            onClick={onEdit}
-            style={{
-              background: '#FFF0F0', border: '1.5px solid #C0272D', borderRadius: 10,
-              padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#C0272D',
-              cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
+          <button onClick={onEdit} style={{ background: '#FFF0F0', border: '1.5px solid #C0272D', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#C0272D', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
             ✏️ Edit LPJ
           </button>
         )}
       </div>
 
-      {/* Status banner */}
       <div style={{ background: statusBg[lpj.status] || '#F5F5F5', borderRadius: 12, padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: statusColor[lpj.status] || '#555' }}>
-          {statusLabel[lpj.status] || lpj.status}
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: statusColor[lpj.status] || '#555' }}>{statusLabel[lpj.status] || lpj.status}</div>
         <div style={{ fontSize: 11, color: '#999' }}>Disubmit {formatDate(lpj.submitted_at)}</div>
       </div>
 
-      {/* Summary */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 24, marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 12 : 20 }}>
           {[
@@ -106,12 +91,9 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
         )}
       </div>
 
-      {/* Nota detail */}
       {lpj.lpj_nota?.length > 0 && (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>
-            Detail Realisasi per Nota
-          </div>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Detail Realisasi per Nota</div>
           {lpj.lpj_nota.map((nota, i) => (
             <div key={nota.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 10 }}>
@@ -120,8 +102,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#C0272D', marginTop: 2 }}>{formatRp(nota.total_nota)}</div>
                 </div>
                 {nota.file_url && (
-                  <a href={nota.file_url} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 12, color: '#1565C0', textDecoration: 'none', background: '#E3F2FD', padding: '6px 10px', borderRadius: 8, flexShrink: 0 }}>
+                  <a href={nota.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1565C0', textDecoration: 'none', background: '#E3F2FD', padding: '6px 10px', borderRadius: 8, flexShrink: 0 }}>
                     📎 Lihat Nota
                   </a>
                 )}
@@ -168,24 +149,17 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
         </div>
       )}
 
-      {error && (
-        <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>}
 
-      {/* Approve button */}
       {canApproveLpj() && (
         isMobile ? (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90 }}>
-            <button onClick={onApprove} disabled={approving}
-              style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1 }}>
+            <button onClick={onApprove} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1 }}>
               {approving ? 'Memproses...' : approveLabel()}
             </button>
           </div>
         ) : (
-          <button onClick={onApprove} disabled={approving}
-            style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1, marginBottom: 12 }}>
+          <button onClick={onApprove} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1, marginBottom: 12 }}>
             {approving ? 'Memproses...' : approveLabel()}
           </button>
         )
@@ -201,21 +175,25 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
   )
 }
 
+// Generate unique ID untuk extra items
+function genId() { return 'extra_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) }
+
 export default function LpjPage() {
   const { pengajuanId } = useParams()
   const { profile } = useAuth()
   const navigate = useNavigate()
 
   const [pengajuan, setPengajuan] = useState(null)
-  const [items, setItems] = useState([])
+  const [items, setItems] = useState([])         // item dari pengajuan (original)
+  const [extraItems, setExtraItems] = useState([]) // item tambahan realisasi
   const [existingLpj, setExistingLpj] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
-  const [realisasi, setRealisasi] = useState({})
-  const [notas, setNotas] = useState([{ nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }])
+  const [realisasi, setRealisasi] = useState({})   // { [itemId]: { qty, harga } } untuk item original
+  const [notas, setNotas] = useState([{ nama_nota: '', file: null, existingFileUrl: null, existingFileName: null, itemIds: [] }])
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')
   const [isEditing, setIsEditing] = useState(false)
 
@@ -243,31 +221,43 @@ export default function LpjPage() {
     setLoading(false)
   }
 
-  // Pre-fill form dari data LPJ existing saat masuk edit mode
   function enterEditMode() {
     if (!existingLpj) return
+    const origIds = new Set(items.map(i => i.id))
 
-    // Rebuild realisasi dari lpj_nota_items
+    // Rebuild realisasi item original
     const newRealisasi = {}
     items.forEach(item => { newRealisasi[item.id] = { qty: item.qty, harga: item.harga_satuan } })
+
+    // Rebuild extra items (item di lpj_nota_items yang pengajuan_item_id-nya null atau tidak ada di items original)
+    const rebuilt_extras = []
+    const extraIdMap = {} // tempId → real pengajuan_item_id (null berarti extra)
+
     existingLpj.lpj_nota?.forEach(nota => {
       nota.lpj_nota_items?.forEach(ni => {
-        newRealisasi[ni.pengajuan_item_id] = {
-          qty: ni.realisasi_qty,
-          harga: ni.realisasi_harga,
+        if (origIds.has(ni.pengajuan_item_id)) {
+          newRealisasi[ni.pengajuan_item_id] = { qty: ni.realisasi_qty, harga: ni.realisasi_harga }
+        } else {
+          // item extra — pakai tempId supaya bisa di-assign ke nota
+          const tempId = genId()
+          rebuilt_extras.push({ id: tempId, uraian: ni.uraian, satuan: ni.satuan, qty: ni.realisasi_qty, harga: ni.realisasi_harga })
+          extraIdMap[tempId] = ni.pengajuan_item_id // bisa null
         }
       })
     })
     setRealisasi(newRealisasi)
+    setExtraItems(rebuilt_extras)
 
-    // Rebuild notas dari lpj_nota existing
-    const rebuiltNotas = existingLpj.lpj_nota?.map(nota => ({
-      nama_nota: nota.nama_nota,
-      file: null, // file baru kalau mau replace, null = pakai existing
-      existingFileUrl: nota.file_url || null,
-      existingFileName: nota.file_name || null,
-      itemIds: nota.lpj_nota_items?.map(ni => ni.pengajuan_item_id) || [],
-    })) || [{ nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }]
+    // Rebuild notas
+    const rebuiltNotas = existingLpj.lpj_nota?.map(nota => {
+      const itemIds = nota.lpj_nota_items?.map(ni => {
+        if (origIds.has(ni.pengajuan_item_id)) return ni.pengajuan_item_id
+        // cari extra item yang cocok berdasarkan uraian + harga
+        const match = rebuilt_extras.find(e => e.uraian === ni.uraian && Number(e.harga) === Number(ni.realisasi_harga))
+        return match ? match.id : null
+      }).filter(Boolean) || []
+      return { nama_nota: nota.nama_nota, file: null, existingFileUrl: nota.file_url || null, existingFileName: nota.file_name || null, itemIds }
+    }) || [{ nama_nota: '', file: null, existingFileUrl: null, existingFileName: null, itemIds: [] }]
 
     setNotas(rebuiltNotas)
     setMetodePengembalian(existingLpj.metode_pengembalian || 'transfer')
@@ -275,22 +265,56 @@ export default function LpjPage() {
     setError(null)
   }
 
-  function cancelEdit() {
-    setIsEditing(false)
-    setError(null)
+  function cancelEdit() { setIsEditing(false); setError(null) }
+
+  // Extra items CRUD
+  function addExtraItem() {
+    const id = genId()
+    setExtraItems(prev => [...prev, { id, uraian: '', satuan: '', qty: '', harga: '' }])
+  }
+  function removeExtraItem(id) {
+    setExtraItems(prev => prev.filter(e => e.id !== id))
+    // Hapus dari semua nota juga
+    setNotas(prev => prev.map(n => ({ ...n, itemIds: n.itemIds.filter(iid => iid !== id) })))
+  }
+  function updateExtraItem(id, field, value) {
+    setExtraItems(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
   }
 
-  const totalRealisasi = items.reduce((sum, item) => {
+  // Total realisasi = item original + extra items
+  const totalRealisasiOriginal = items.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
   }, 0)
+  const totalRealisasiExtra = extraItems.reduce((sum, e) => sum + (Number(e.qty || 0) * Number(e.harga || 0)), 0)
+  const totalRealisasi = totalRealisasiOriginal + totalRealisasiExtra
   const sisaDana = Number(pengajuan?.total_pengajuan || 0) - totalRealisasi
+
+  // Semua item untuk checklist nota (original + extra)
+  const allItemsForNota = [
+    ...items.map(item => ({
+      id: item.id,
+      uraian: item.uraian,
+      satuan: realisasi[item.id]?.qty !== undefined ? item.satuan : item.satuan,
+      qty: realisasi[item.id]?.qty || 0,
+      harga: realisasi[item.id]?.harga || 0,
+      isExtra: false,
+    })),
+    ...extraItems.map(e => ({
+      id: e.id,
+      uraian: e.uraian || '(item tambahan)',
+      satuan: e.satuan,
+      qty: e.qty || 0,
+      harga: e.harga || 0,
+      isExtra: true,
+    })),
+  ]
 
   function updateRealisasi(itemId, field, value) {
     setRealisasi(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }))
   }
 
-  function addNota() { setNotas([...notas, { nama_nota: '', file: null, existingFileUrl: null, itemIds: [] }]) }
+  function addNota() { setNotas([...notas, { nama_nota: '', file: null, existingFileUrl: null, existingFileName: null, itemIds: [] }]) }
   function removeNota(idx) { if (notas.length === 1) return; setNotas(notas.filter((_, i) => i !== idx)) }
   function updateNota(idx, field, value) { const u = [...notas]; u[idx][field] = value; setNotas(u) }
 
@@ -335,15 +359,18 @@ export default function LpjPage() {
 
   function validateForm() {
     const itemsValid = items.every(item => Number(realisasi[item.id]?.qty || 0) > 0)
-    if (!itemsValid) { setError('Qty realisasi semua item harus diisi'); return false }
+    if (!itemsValid) { setError('Qty realisasi semua item pengajuan harus diisi'); return false }
+    const extraValid = extraItems.every(e => e.uraian.trim() && Number(e.qty || 0) > 0 && Number(e.harga || 0) > 0)
+    if (!extraValid) { setError('Item tambahan harus diisi lengkap (nama, qty, harga)'); return false }
     if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return false }
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
-    const unassigned = items.filter(item => !allAssignedItems.has(item.id))
-    if (unassigned.length > 0) { setError(`Item "${unassigned[0].uraian}" belum di-assign ke nota manapun`); return false }
+    const unassignedOrig = items.filter(item => !allAssignedItems.has(item.id))
+    if (unassignedOrig.length > 0) { setError(`Item "${unassignedOrig[0].uraian}" belum di-assign ke nota manapun`); return false }
+    const unassignedExtra = extraItems.filter(e => !allAssignedItems.has(e.id))
+    if (unassignedExtra.length > 0) { setError(`Item tambahan "${unassignedExtra[0].uraian || 'baru'}" belum di-assign ke nota manapun`); return false }
     return true
   }
 
-  // Helper: upload file nota, return { fileUrl, fileName }
   async function uploadNotaFile(lpjId, nota) {
     if (!nota.file) return { fileUrl: nota.existingFileUrl || null, fileName: nota.existingFileName || null }
     const ext = nota.file.name?.split('.').pop() || 'jpg'
@@ -367,68 +394,67 @@ export default function LpjPage() {
         submitted_at: new Date().toISOString(),
       }).select().single()
       if (lpjErr) throw lpjErr
-
       await insertNotas(lpj.id)
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
   }
 
-  // Update LPJ existing — hapus nota lama, insert baru
   async function handleUpdate() {
     if (!validateForm()) return
     setSubmitting(true); setError(null)
     try {
       const lpjId = existingLpj.id
-
-      // Hapus semua nota lama (cascade ke lpj_nota_items otomatis via FK, atau manual)
       const { data: oldNotas } = await supabase.from('lpj_nota').select('id').eq('lpj_id', lpjId)
       if (oldNotas?.length > 0) {
         const oldNotaIds = oldNotas.map(n => n.id)
         await supabase.from('lpj_nota_items').delete().in('nota_id', oldNotaIds)
         await supabase.from('lpj_nota').delete().eq('lpj_id', lpjId)
       }
-
-      // Update header LPJ
       const { error: updateErr } = await supabase.from('lpj').update({
         total_realisasi: totalRealisasi,
         metode_pengembalian: sisaDana > 0 ? metodePengembalian : null,
       }).eq('id', lpjId)
       if (updateErr) throw updateErr
-
-      // Insert nota baru
       await insertNotas(lpjId)
-
       setIsEditing(false)
+      setExtraItems([])
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
   }
 
-  // Shared helper: insert notas + items ke lpj_id tertentu
   async function insertNotas(lpjId) {
     for (const nota of notas) {
       const { fileUrl, fileName } = await uploadNotaFile(lpjId, nota)
       const totalNota = nota.itemIds.reduce((sum, itemId) => {
-        const r = realisasi[itemId]
-        return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
+        const origItem = items.find(i => i.id === itemId)
+        if (origItem) {
+          const r = realisasi[itemId]
+          return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
+        }
+        const extra = extraItems.find(e => e.id === itemId)
+        if (extra) return sum + (Number(extra.qty || 0) * Number(extra.harga || 0))
+        return sum
       }, 0)
       const { data: notaData, error: notaErr } = await supabase.from('lpj_nota').insert({
-        lpj_id: lpjId, nama_nota: nota.nama_nota, total_nota: totalNota,
-        file_url: fileUrl, file_name: fileName,
+        lpj_id: lpjId, nama_nota: nota.nama_nota, total_nota: totalNota, file_url: fileUrl, file_name: fileName,
       }).select().single()
       if (notaErr) throw notaErr
+
       if (nota.itemIds.length > 0) {
         const notaItems = nota.itemIds.map(itemId => {
           const origItem = items.find(i => i.id === itemId)
-          const r = realisasi[itemId]
-          return {
-            nota_id: notaData.id, pengajuan_item_id: itemId,
-            uraian: origItem?.uraian || '', satuan: origItem?.satuan || '',
-            qty_pengajuan: origItem?.qty || 0, harga_pengajuan: origItem?.harga_satuan || 0,
-            realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0),
+          if (origItem) {
+            const r = realisasi[itemId]
+            return { nota_id: notaData.id, pengajuan_item_id: itemId, uraian: origItem.uraian, satuan: origItem.satuan, qty_pengajuan: origItem.qty, harga_pengajuan: origItem.harga_satuan, realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0) }
           }
-        })
+          const extra = extraItems.find(e => e.id === itemId)
+          if (extra) {
+            return { nota_id: notaData.id, pengajuan_item_id: null, uraian: extra.uraian, satuan: extra.satuan, qty_pengajuan: 0, harga_pengajuan: 0, realisasi_qty: Number(extra.qty || 0), realisasi_harga: Number(extra.harga || 0) }
+          }
+          return null
+        }).filter(Boolean)
         await supabase.from('lpj_nota_items').insert(notaItems)
       }
     }
@@ -439,11 +465,11 @@ export default function LpjPage() {
 
   const backTo = () => navigate(`/pengajuan/${pengajuanId}`)
 
-  // Render form (dipakai untuk create baru maupun edit mode)
-  const renderForm = (isEditMode = false) => (
-    <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+  const inputStyle = { padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
-      {/* Mobile top bar */}
+  const renderForm = (isEditMode = false) => (
+    <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 900 }}>
+
       {isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <button onClick={isEditMode ? cancelEdit : backTo} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
@@ -482,21 +508,26 @@ export default function LpjPage() {
         </div>
       </div>
 
-      {error && (
-        <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>
-      )}
+      {error && <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>}
 
-      {/* Realisasi item */}
+      {/* Realisasi item — TABEL RAPIH */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Realisasi Item</div>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Realisasi Item</span>
+          <button onClick={addExtraItem} style={{ background: '#F0F7FF', border: '1px solid #BBDEFB', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#1565C0', cursor: 'pointer', fontFamily: 'inherit' }}>
+            + Tambah Item
+          </button>
+        </div>
+
         {isMobile ? (
           <div>
+            {/* Item original */}
             {items.map(item => {
               const r = realisasi[item.id] || {}
               const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
               return (
                 <div key={item.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 4 }}>{item.uraian}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 2 }}>{item.uraian}</div>
                   <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
                     <div>
@@ -517,6 +548,38 @@ export default function LpjPage() {
                 </div>
               )
             })}
+            {/* Extra items mobile */}
+            {extraItems.map((e, idx) => {
+              const subtotal = Number(e.qty || 0) * Number(e.harga || 0)
+              return (
+                <div key={e.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8', background: '#FAFFF4' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item Tambahan #{idx + 1}</div>
+                    <button onClick={() => removeExtraItem(e.id)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  </div>
+                  <input placeholder="Nama item" value={e.uraian} onChange={ev => updateExtraItem(e.id, 'uraian', ev.target.value)}
+                    style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box' }} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Qty</div>
+                      <input type="number" placeholder="0" value={e.qty} onChange={ev => updateExtraItem(e.id, 'qty', ev.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'center', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Satuan</div>
+                      <input placeholder="Pcs" value={e.satuan} onChange={ev => updateExtraItem(e.id, 'satuan', ev.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Harga</div>
+                      <input type="number" placeholder="0" value={e.harga} onChange={ev => updateExtraItem(e.id, 'harga', ev.target.value)}
+                        style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#2E7D32' }}>= {formatRp(subtotal)}</div>
+                </div>
+              )
+            })}
             <div style={{ padding: '12px 16px', borderTop: '2px solid #111', display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#555' }}>Total Realisasi</span>
               <span style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>{formatRp(totalRealisasi)}</span>
@@ -526,42 +589,75 @@ export default function LpjPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#FAFAFA' }}>
-                {['Item', 'Qty Pengajuan', 'Qty Realisasi', 'Harga Realisasi', 'Subtotal'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: h === 'Item' ? 'left' : 'right', borderBottom: '1px solid #F0F0F0' }}>{h}</th>
+                {['Item', 'Qty Pengajuan', 'Satuan', 'Qty Realisasi', 'Harga Realisasi', 'Subtotal', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: ['Qty Pengajuan', 'Qty Realisasi', 'Harga Realisasi', 'Subtotal'].includes(h) ? 'right' : 'left', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
+              {/* Item original */}
               {items.map(item => {
                 const r = realisasi[item.id] || {}
                 const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
                 return (
                   <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#111' }}>
+                    <td style={{ padding: '10px 12px', fontSize: 13, color: '#111', minWidth: 160 }}>
                       <div>{item.uraian}</div>
-                      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
+                      <div style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{formatRp(item.harga_satuan)} / {item.satuan}</div>
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#999', textAlign: 'right' }}>{item.qty} {item.satuan}</td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                        <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                          style={{ width: 70, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
-                        <span style={{ fontSize: 12, color: '#999' }}>{item.satuan}</span>
-                      </div>
+                    <td style={{ padding: '10px 12px', fontSize: 13, color: '#999', textAlign: 'right', whiteSpace: 'nowrap' }}>{item.qty}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 12, color: '#AAA' }}>{item.satuan}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                        style={{ ...inputStyle, width: 72 }} />
                     </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
-                        style={{ width: 110, padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit' }} />
+                        style={{ ...inputStyle, width: 120 }} />
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(subtotal)}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatRp(subtotal)}</td>
+                    <td style={{ padding: '10px 12px' }} />
+                  </tr>
+                )
+              })}
+
+              {/* Extra items */}
+              {extraItems.map((e, idx) => {
+                const subtotal = Number(e.qty || 0) * Number(e.harga || 0)
+                return (
+                  <tr key={e.id} style={{ borderBottom: '1px solid #F8F8F8', background: '#FAFFF4' }}>
+                    <td style={{ padding: '10px 12px' }}>
+                      <input placeholder={`Item tambahan ${idx + 1}`} value={e.uraian} onChange={ev => updateExtraItem(e.id, 'uraian', ev.target.value)}
+                        style={{ ...inputStyle, textAlign: 'left', width: '100%', minWidth: 140 }} />
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <span style={{ fontSize: 11, color: '#B8C0B0', fontStyle: 'italic' }}>—</span>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <input placeholder="Pcs" value={e.satuan} onChange={ev => updateExtraItem(e.id, 'satuan', ev.target.value)}
+                        style={{ ...inputStyle, textAlign: 'left', width: 56 }} />
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <input type="number" placeholder="0" value={e.qty} onChange={ev => updateExtraItem(e.id, 'qty', ev.target.value)}
+                        style={{ ...inputStyle, width: 72 }} />
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <input type="number" placeholder="0" value={e.harga} onChange={ev => updateExtraItem(e.id, 'harga', ev.target.value)}
+                        style={{ ...inputStyle, width: 120 }} />
+                    </td>
+                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#2E7D32', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatRp(subtotal)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      <button onClick={() => removeExtraItem(e.id)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: '2px solid #111' }}>
-                <td colSpan={4} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Realisasi</td>
+                <td colSpan={5} style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#555' }}>Total Realisasi</td>
                 <td style={{ padding: '12px 16px', fontSize: 16, fontWeight: 700, color: '#C0272D', textAlign: 'right' }}>{formatRp(totalRealisasi)}</td>
+                <td />
               </tr>
             </tfoot>
           </table>
@@ -590,9 +686,8 @@ export default function LpjPage() {
             <div style={{ marginBottom: 14 }}>
               <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {items.map(item => {
-                  const r = realisasi[item.id] || {}
-                  const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+                {allItemsForNota.map(item => {
+                  const subtotal = Number(item.qty || 0) * Number(item.harga || 0)
                   const checked = nota.itemIds.includes(item.id)
                   const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
                   const disabled = assignedToOther && !checked
@@ -600,19 +695,20 @@ export default function LpjPage() {
                     <label key={item.id} style={{
                       display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
                       padding: '10px 12px', borderRadius: 8,
-                      background: checked ? '#FFF5F5' : disabled ? '#F5F5F5' : '#FAFAFA',
-                      border: `1px solid ${checked ? '#C0272D' : '#F0F0F0'}`,
+                      background: checked ? (item.isExtra ? '#F0FFF4' : '#FFF5F5') : disabled ? '#F5F5F5' : '#FAFAFA',
+                      border: `1px solid ${checked ? (item.isExtra ? '#2E7D32' : '#C0272D') : '#F0F0F0'}`,
                       opacity: disabled ? 0.5 : 1,
                     }}>
                       <input type="checkbox" checked={checked} disabled={disabled}
                         onChange={() => !disabled && toggleItemInNota(idx, item.id)}
-                        style={{ accentColor: '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
+                        style={{ accentColor: item.isExtra ? '#2E7D32' : '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333' }}>
+                        <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
                           {item.uraian}
-                          {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA', marginLeft: 6 }}>(sudah di nota lain)</span>}
+                          {item.isExtra && <span style={{ fontSize: 10, background: '#E8F5E9', color: '#2E7D32', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>+</span>}
+                          {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA' }}>(sudah di nota lain)</span>}
                         </div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{r.qty} {item.satuan} × {formatRp(r.harga)} = <strong>{formatRp(subtotal)}</strong></div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{item.qty} {item.satuan} × {formatRp(item.harga)} = <strong>{formatRp(subtotal)}</strong></div>
                       </div>
                     </label>
                   )
@@ -622,7 +718,6 @@ export default function LpjPage() {
 
             <div>
               <div className="form-label" style={{ marginBottom: 8 }}>Foto / Scan Nota</div>
-              {/* Kalau ada file baru */}
               {nota.file ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FAFAFA', borderRadius: 8, padding: '10px 14px' }}>
                   <span>{nota.file.type?.includes('pdf') ? '📄' : '🖼️'}</span>
@@ -633,15 +728,13 @@ export default function LpjPage() {
                   <button onClick={() => updateNota(idx, 'file', null)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
                 </div>
               ) : nota.existingFileUrl ? (
-                /* Kalau ada file lama dari DB */
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F7FF', borderRadius: 8, padding: '10px 14px', border: '1px solid #BBDEFB' }}>
                   <span>📎</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#1565C0' }}>{nota.existingFileName || 'File nota'}</div>
                     <div style={{ fontSize: 11, color: '#888' }}>File sebelumnya — upload baru untuk mengganti</div>
                   </div>
-                  <a href={nota.existingFileUrl} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 12, color: '#1565C0', textDecoration: 'none', flexShrink: 0 }}>Lihat</a>
+                  <a href={nota.existingFileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1565C0', textDecoration: 'none', flexShrink: 0 }}>Lihat</a>
                   <label style={{ fontSize: 12, color: '#555', cursor: 'pointer', flexShrink: 0, background: '#E3F2FD', padding: '4px 8px', borderRadius: 6 }}>
                     Ganti
                     <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileChange(idx, e)} style={{ display: 'none' }} />
@@ -660,7 +753,6 @@ export default function LpjPage() {
         ))}
       </div>
 
-      {/* Sisa dana */}
       {sisaDana > 0 && (
         <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: isMobile ? '16px' : 20, marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#B8860B', marginBottom: 12 }}>Sisa dana {formatRp(sisaDana)} — pilih metode pengembalian</div>
@@ -675,7 +767,6 @@ export default function LpjPage() {
         </div>
       )}
 
-      {/* Submit buttons */}
       {isMobile ? (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90, display: 'flex', gap: 10 }}>
           <button onClick={isEditMode ? cancelEdit : backTo} style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
@@ -696,8 +787,6 @@ export default function LpjPage() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
-
-      {/* Sidebar desktop only */}
       {!isMobile && (
         <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50, display: 'flex', flexDirection: 'column', padding: '24px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
