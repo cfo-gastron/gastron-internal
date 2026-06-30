@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { subscribeToPush, isPushSupported, getPushPermissionStatus } from '../lib/pushNotif'
 
 const STATUS_LABEL = {
   draft: 'Draft',
@@ -76,6 +77,36 @@ export default function DashboardPage() {
   const touchCurrentY = useRef(0)
   const [pullDistance, setPullDistance] = useState(0)
   const PULL_THRESHOLD = 70
+
+  // Push notif banner state
+  const [notifStatus, setNotifStatus] = useState('default') // 'default' | 'granted' | 'denied' | 'unsupported'
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [showNotifBanner, setShowNotifBanner] = useState(false)
+
+  useEffect(() => {
+    if (!isPushSupported()) {
+      setNotifStatus('unsupported')
+      return
+    }
+    const status = getPushPermissionStatus()
+    setNotifStatus(status)
+    // Tampilkan banner kalau belum granted/denied (masih 'default')
+    setShowNotifBanner(status === 'default')
+  }, [])
+
+  async function handleEnableNotif() {
+    if (!profile?.id) return
+    setNotifLoading(true)
+    const result = await subscribeToPush(profile.id)
+    setNotifLoading(false)
+    if (result.success) {
+      setNotifStatus('granted')
+      setShowNotifBanner(false)
+    } else if (result.reason === 'permission_denied') {
+      setNotifStatus('denied')
+      setShowNotifBanner(false)
+    }
+  }
 
   function handleTouchStart(e) {
     if (window.scrollY > 0) return
@@ -233,6 +264,33 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <img src="/logo-gastron.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
             <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>Gastron</div>
+          </div>
+        )}
+
+        {/* Notif banner — muncul kalau permission belum di-set */}
+        {showNotifBanner && (
+          <div style={{
+            background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 12,
+            padding: '14px 16px', marginBottom: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 200 }}>
+              <span style={{ fontSize: 20 }}>🔔</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#7A5C00' }}>Aktifkan notifikasi</div>
+                <div style={{ fontSize: 11, color: '#9C8030' }}>Biar gak ketinggalan pengajuan baru</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button onClick={() => setShowNotifBanner(false)}
+                style={{ padding: '8px 12px', background: 'transparent', border: 'none', borderRadius: 8, fontSize: 12, color: '#9C8030', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Nanti
+              </button>
+              <button onClick={handleEnableNotif} disabled={notifLoading}
+                style={{ padding: '8px 14px', background: '#B8860B', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: notifLoading ? 0.7 : 1 }}>
+                {notifLoading ? 'Memproses...' : 'Aktifkan'}
+              </button>
+            </div>
           </div>
         )}
 
