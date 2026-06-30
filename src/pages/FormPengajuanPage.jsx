@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { notifyPengajuanUpdate } from '../lib/sendNotif'
 
 const ROMAN_MONTHS = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII']
 
@@ -152,6 +153,12 @@ export default function FormPengajuanPage() {
         action_by: profile.id, role_at_time: profile.role,
       })
 
+      // Kirim notif ke approver + pengaju
+      notifyPengajuanUpdate(
+        { ...pengajuan },
+        { title: '📝 Pengajuan baru', body: `${profile.full_name} ngajuin "${judul}"` }
+      )
+
       navigate(`/pengajuan/${pengajuan.id}`)
     } catch (err) {
       setError(err.message || 'Terjadi kesalahan')
@@ -168,10 +175,8 @@ export default function FormPengajuanPage() {
   }
 
   return (
-    // Wrapper: full width, no margin, no padding yang aneh
     <div style={{ background: '#F8F8F8', minHeight: '100vh', width: '100%', boxSizing: 'border-box' }}>
 
-      {/* HEADER */}
       <div style={{
         background: '#fff',
         borderBottom: '1px solid #F0F0F0',
@@ -195,7 +200,6 @@ export default function FormPengajuanPage() {
         </div>
       </div>
 
-      {/* CONTENT */}
       <div style={{
         padding: isMobile ? '16px 16px 120px' : '24px 32px 80px',
         maxWidth: isMobile ? '100%' : 800,
@@ -210,7 +214,6 @@ export default function FormPengajuanPage() {
           </div>
         )}
 
-        {/* Info Pengajuan */}
         <div style={cardStyle}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 16 }}>Informasi Pengajuan</div>
 
@@ -274,7 +277,6 @@ export default function FormPengajuanPage() {
           </div>
         </div>
 
-        {/* Items */}
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Item Pengajuan</div>
@@ -288,13 +290,11 @@ export default function FormPengajuanPage() {
             <div key={idx} style={{ background: '#FAFAFA', borderRadius: 10, padding: '14px', marginBottom: 10, position: 'relative' }}>
               <div style={{ fontSize: 11, color: '#999', marginBottom: 8 }}>Item #{idx + 1}</div>
 
-              {/* Uraian — full width */}
               <div style={{ marginBottom: 10 }}>
                 <input className="form-input" placeholder="Nama item / uraian"
                   value={item.uraian} onChange={e => updateItem(idx, 'uraian', e.target.value)} />
               </div>
 
-              {/* Qty + Satuan — 2 kolom */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 <div>
                   <div className="form-label">Qty</div>
@@ -311,7 +311,6 @@ export default function FormPengajuanPage() {
                 </div>
               </div>
 
-              {/* Harga — full width biar ga terlalu sempit di mobile */}
               <div style={{ marginBottom: 8 }}>
                 <div className="form-label">Harga Satuan (Rp)</div>
                 <input className="form-input" type="number" min="0" placeholder="0"
@@ -320,7 +319,6 @@ export default function FormPengajuanPage() {
                   style={{ textAlign: 'right' }} />
               </div>
 
-              {/* Subtotal */}
               <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>
                 = {formatRp(Number(item.qty) * Number(item.harga_satuan))}
               </div>
@@ -338,7 +336,6 @@ export default function FormPengajuanPage() {
           </div>
         </div>
 
-        {/* Penerima */}
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
@@ -353,7 +350,6 @@ export default function FormPengajuanPage() {
 
           {penerima.map((p, idx) => (
             <div key={idx} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 10, position: 'relative' }}>
-              {/* Stack 1 kolom di mobile, 2 kolom di desktop */}
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Nama Penerima</label>
@@ -384,7 +380,6 @@ export default function FormPengajuanPage() {
           ))}
         </div>
 
-        {/* Attachments */}
         <div style={cardStyle} onPaste={handlePaste}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 4 }}>Lampiran</div>
           <div style={{ fontSize: 12, color: '#999', marginBottom: 14 }}>
@@ -418,7 +413,6 @@ export default function FormPengajuanPage() {
         </div>
       </div>
 
-      {/* STICKY BOTTOM */}
       <div style={{
         position: 'fixed',
         bottom: 0,

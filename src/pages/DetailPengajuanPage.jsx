@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
+import { notifyPengajuanUpdate } from '../lib/sendNotif'
 
 const STATUS_LABEL = {
   draft: 'Draft',
@@ -44,6 +45,20 @@ function getLogCatatan(status, fullName) {
   if (status === 'approved_cfo') return `Final approval (CEO) oleh ${fullName}`
   if (status === 'approved_step1') return `Approved (CFO) oleh ${fullName}`
   return `Approved oleh ${fullName}`
+}
+
+// Notif title/body per status — bahasa santai
+function getNotifContent(newStatus, judul, fullName) {
+  const map = {
+    submitted: { title: '📝 Pengajuan baru', body: `${fullName} ngajuin "${judul}"` },
+    approved_step1: { title: '✅ Pengajuan disetujui', body: `"${judul}" udah di-acc, lanjut ke CFO` },
+    approved_cfo: { title: '✅ Pengajuan disetujui CFO', body: `"${judul}" udah di-acc CFO, tinggal final approve` },
+    approved_ceo: { title: '🎉 Pengajuan di-final approve', body: `"${judul}" udah transferred, beres!` },
+    revision: { title: '✏️ Perlu direvisi', body: `"${judul}" diminta direvisi nih` },
+    hold: { title: '⏸️ Pengajuan di-hold', body: `"${judul}" lagi ditahan dulu` },
+    rejected: { title: '❌ Pengajuan ditolak', body: `"${judul}" ditolak` },
+  }
+  return map[newStatus] || { title: 'Update pengajuan', body: judul }
 }
 
 export default function DetailPengajuanPage() {
@@ -143,16 +158,21 @@ export default function DetailPengajuanPage() {
     setActionLoading(true)
     const status = pengajuan.status
     let updateData = {}
+    let newStatus = ''
     if (status === 'submitted') {
       if (pengajuan.division === 'FIN') {
         updateData = { status: 'approved_cfo', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id, approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
+        newStatus = 'approved_cfo'
       } else {
         updateData = { status: 'approved_step1', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id }
+        newStatus = 'approved_step1'
       }
     } else if (status === 'approved_step1') {
       updateData = { status: 'approved_cfo', approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
+      newStatus = 'approved_cfo'
     } else if (status === 'approved_cfo') {
       updateData = { status: 'approved_ceo', approved_ceo_at: new Date().toISOString(), ceo_approved_by: profile.id }
+      newStatus = 'approved_ceo'
     }
     await supabase.from('pengajuan').update(updateData).eq('id', id)
     await supabase.from('approval_logs').insert({
@@ -160,6 +180,11 @@ export default function DetailPengajuanPage() {
       action_by: profile.id, role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
+
+    // Kirim notif ke semua pihak relevan
+    const notifContent = getNotifContent(newStatus, pengajuan.judul, profile.full_name)
+    notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
+
     fetchDetail()
     setActionLoading(false)
   }
@@ -175,6 +200,10 @@ export default function DetailPengajuanPage() {
       action_by: profile.id, role_at_time: profile.role,
       rejection_type: rejectType, catatan: rejectReason,
     })
+
+    const notifContent = getNotifContent(rejectType, pengajuan.judul, profile.full_name)
+    notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
+
     setShowRejectModal(false)
     setRejectReason('')
     fetchDetail()
@@ -194,6 +223,12 @@ export default function DetailPengajuanPage() {
       action_by: profile.id, role_at_time: profile.role,
       catatan: `Diajukan ulang oleh ${profile.full_name}`,
     })
+
+    notifyPengajuanUpdate(
+      { ...pengajuan, id },
+      { title: '📝 Pengajuan diajukan ulang', body: `"${pengajuan.judul}" diajukan ulang oleh ${profile.full_name}` }
+    )
+
     setShowHoldModal(false)
     fetchDetail()
     setActionLoading(false)

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { notifyLpjUpdate } from '../lib/sendNotif'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -175,7 +176,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
   )
 }
 
-// Generate unique ID untuk extra items
 function genId() { return 'extra_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) }
 
 export default function LpjPage() {
@@ -184,15 +184,15 @@ export default function LpjPage() {
   const navigate = useNavigate()
 
   const [pengajuan, setPengajuan] = useState(null)
-  const [items, setItems] = useState([])         // item dari pengajuan (original)
-  const [extraItems, setExtraItems] = useState([]) // item tambahan realisasi
+  const [items, setItems] = useState([])
+  const [extraItems, setExtraItems] = useState([])
   const [existingLpj, setExistingLpj] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
-  const [realisasi, setRealisasi] = useState({})   // { [itemId]: { qty, harga } } untuk item original
+  const [realisasi, setRealisasi] = useState({})
   const [notas, setNotas] = useState([{ nama_nota: '', file: null, existingFileUrl: null, existingFileName: null, itemIds: [] }])
   const [metodePengembalian, setMetodePengembalian] = useState('transfer')
   const [isEditing, setIsEditing] = useState(false)
@@ -225,34 +225,29 @@ export default function LpjPage() {
     if (!existingLpj) return
     const origIds = new Set(items.map(i => i.id))
 
-    // Rebuild realisasi item original
     const newRealisasi = {}
     items.forEach(item => { newRealisasi[item.id] = { qty: item.qty, harga: item.harga_satuan } })
 
-    // Rebuild extra items (item di lpj_nota_items yang pengajuan_item_id-nya null atau tidak ada di items original)
     const rebuilt_extras = []
-    const extraIdMap = {} // tempId → real pengajuan_item_id (null berarti extra)
+    const extraIdMap = {}
 
     existingLpj.lpj_nota?.forEach(nota => {
       nota.lpj_nota_items?.forEach(ni => {
         if (origIds.has(ni.pengajuan_item_id)) {
           newRealisasi[ni.pengajuan_item_id] = { qty: ni.realisasi_qty, harga: ni.realisasi_harga }
         } else {
-          // item extra — pakai tempId supaya bisa di-assign ke nota
           const tempId = genId()
           rebuilt_extras.push({ id: tempId, uraian: ni.uraian, satuan: ni.satuan, qty: ni.realisasi_qty, harga: ni.realisasi_harga })
-          extraIdMap[tempId] = ni.pengajuan_item_id // bisa null
+          extraIdMap[tempId] = ni.pengajuan_item_id
         }
       })
     })
     setRealisasi(newRealisasi)
     setExtraItems(rebuilt_extras)
 
-    // Rebuild notas
     const rebuiltNotas = existingLpj.lpj_nota?.map(nota => {
       const itemIds = nota.lpj_nota_items?.map(ni => {
         if (origIds.has(ni.pengajuan_item_id)) return ni.pengajuan_item_id
-        // cari extra item yang cocok berdasarkan uraian + harga
         const match = rebuilt_extras.find(e => e.uraian === ni.uraian && Number(e.harga) === Number(ni.realisasi_harga))
         return match ? match.id : null
       }).filter(Boolean) || []
@@ -267,21 +262,18 @@ export default function LpjPage() {
 
   function cancelEdit() { setIsEditing(false); setError(null) }
 
-  // Extra items CRUD
   function addExtraItem() {
     const id = genId()
     setExtraItems(prev => [...prev, { id, uraian: '', satuan: '', qty: '', harga: '' }])
   }
   function removeExtraItem(id) {
     setExtraItems(prev => prev.filter(e => e.id !== id))
-    // Hapus dari semua nota juga
     setNotas(prev => prev.map(n => ({ ...n, itemIds: n.itemIds.filter(iid => iid !== id) })))
   }
   function updateExtraItem(id, field, value) {
     setExtraItems(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
   }
 
-  // Total realisasi = item original + extra items
   const totalRealisasiOriginal = items.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
@@ -290,7 +282,6 @@ export default function LpjPage() {
   const totalRealisasi = totalRealisasiOriginal + totalRealisasiExtra
   const sisaDana = Number(pengajuan?.total_pengajuan || 0) - totalRealisasi
 
-  // Semua item untuk checklist nota (original + extra)
   const allItemsForNota = [
     ...items.map(item => ({
       id: item.id,
@@ -341,18 +332,33 @@ export default function LpjPage() {
     setApproving(true); setError(null)
     const role = profile?.role
     let updateData = {}
+    let newStatus = ''
     if (existingLpj.status === 'submitted' && role === 'finance') {
       updateData = { status: 'approved_finance', approved_finance_at: new Date().toISOString(), approved_finance_by: profile.id }
+      newStatus = 'approved_finance'
     } else if (existingLpj.status === 'submitted' && role === 'cfo') {
       updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
+      newStatus = 'closed'
     } else if (existingLpj.status === 'approved_finance' && role === 'cfo') {
       updateData = { status: 'closed', approved_cfo_at: new Date().toISOString(), approved_cfo_by: profile.id }
+      newStatus = 'closed'
     } else {
       setError(`Role "${role}" tidak bisa approve LPJ dengan status "${existingLpj.status}"`)
       setApproving(false); return
     }
     const { error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
     if (updateErr) { setError('Gagal approve: ' + updateErr.message); setApproving(false); return }
+
+    // Kirim notif sesuai status baru
+    const notifMap = {
+      approved_finance: { title: '✅ LPJ disetujui Finance', body: `LPJ "${pengajuan.judul}" udah di-acc Finance, tinggal CFO` },
+      closed: { title: '🎉 LPJ closed', body: `LPJ "${pengajuan.judul}" udah selesai diverifikasi, beres!` },
+    }
+    const notifContent = notifMap[newStatus]
+    if (notifContent) {
+      notifyLpjUpdate({ ...pengajuan, id: pengajuanId }, existingLpj.submitted_by, notifContent)
+    }
+
     setApproving(false)
     navigate(`/pengajuan/${pengajuanId}`)
   }
@@ -395,6 +401,14 @@ export default function LpjPage() {
       }).select().single()
       if (lpjErr) throw lpjErr
       await insertNotas(lpj.id)
+
+      // Notif LPJ baru disubmit → Finance + CFO + pengaju
+      notifyLpjUpdate(
+        { ...pengajuan, id: pengajuanId },
+        profile.id,
+        { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` }
+      )
+
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
@@ -492,7 +506,6 @@ export default function LpjPage() {
         )}
       </div>
 
-      {/* Summary */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 24, marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 12 : 20 }}>
           {[
@@ -510,7 +523,6 @@ export default function LpjPage() {
 
       {error && <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>}
 
-      {/* Realisasi item — TABEL RAPIH */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Realisasi Item</span>
@@ -521,7 +533,6 @@ export default function LpjPage() {
 
         {isMobile ? (
           <div>
-            {/* Item original */}
             {items.map(item => {
               const r = realisasi[item.id] || {}
               const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
@@ -548,7 +559,6 @@ export default function LpjPage() {
                 </div>
               )
             })}
-            {/* Extra items mobile */}
             {extraItems.map((e, idx) => {
               const subtotal = Number(e.qty || 0) * Number(e.harga || 0)
               return (
@@ -595,7 +605,6 @@ export default function LpjPage() {
               </tr>
             </thead>
             <tbody>
-              {/* Item original */}
               {items.map(item => {
                 const r = realisasi[item.id] || {}
                 const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
@@ -621,7 +630,6 @@ export default function LpjPage() {
                 )
               })}
 
-              {/* Extra items */}
               {extraItems.map((e, idx) => {
                 const subtotal = Number(e.qty || 0) * Number(e.harga || 0)
                 return (
@@ -664,7 +672,6 @@ export default function LpjPage() {
         )}
       </div>
 
-      {/* Notas */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
