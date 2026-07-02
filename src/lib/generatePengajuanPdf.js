@@ -357,5 +357,13 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
 
   // ── SAVE ────────────────────────────────────────────────────────────────────────
   const fileName = `Surat_${pengajuan.kode_surat || pengajuan.id}_${new Date().toISOString().slice(0, 10)}.pdf`
-  doc.save(fileName)
+  const pdfBlob = doc.output('blob')
+const blobUrl = URL.createObjectURL(pdfBlob)
+const link = document.createElement('a')
+link.href = blobUrl
+link.download = fileName
+document.body.appendChild(link)
+link.click()
+document.body.removeChild(link)
+setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
 }
