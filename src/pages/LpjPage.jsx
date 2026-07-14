@@ -215,7 +215,7 @@ export default function LpjPage() {
     const itemList = i.data || []
     setItems(itemList)
     const pre = {}
-    itemList.forEach(item => { pre[item.id] = { qty: item.qty, harga: item.harga_satuan } })
+    itemList.forEach(item => { pre[item.id] = { qty: '', harga: item.harga_satuan } })
     setRealisasi(pre)
     if (l.data) setExistingLpj(l.data)
     setLoading(false)
@@ -224,12 +224,9 @@ export default function LpjPage() {
   function enterEditMode() {
     if (!existingLpj) return
     const origIds = new Set(items.map(i => i.id))
-
     const newRealisasi = {}
-    items.forEach(item => { newRealisasi[item.id] = { qty: item.qty, harga: item.harga_satuan } })
-
+    items.forEach(item => { newRealisasi[item.id] = { qty: '', harga: item.harga_satuan } })
     const rebuilt_extras = []
-    const extraIdMap = {}
 
     existingLpj.lpj_nota?.forEach(nota => {
       nota.lpj_nota_items?.forEach(ni => {
@@ -238,7 +235,6 @@ export default function LpjPage() {
         } else {
           const tempId = genId()
           rebuilt_extras.push({ id: tempId, uraian: ni.uraian, satuan: ni.satuan, qty: ni.realisasi_qty, harga: ni.realisasi_harga })
-          extraIdMap[tempId] = ni.pengajuan_item_id
         }
       })
     })
@@ -263,8 +259,7 @@ export default function LpjPage() {
   function cancelEdit() { setIsEditing(false); setError(null) }
 
   function addExtraItem() {
-    const id = genId()
-    setExtraItems(prev => [...prev, { id, uraian: '', satuan: '', qty: '', harga: '' }])
+    setExtraItems(prev => [...prev, { id: genId(), uraian: '', satuan: '', qty: '', harga: '' }])
   }
   function removeExtraItem(id) {
     setExtraItems(prev => prev.filter(e => e.id !== id))
@@ -274,7 +269,10 @@ export default function LpjPage() {
     setExtraItems(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
   }
 
-  const totalRealisasiOriginal = items.reduce((sum, item) => {
+  // Item original yang qty > 0 (yang jadi dibeli)
+  const activeOrigItems = items.filter(item => Number(realisasi[item.id]?.qty || 0) > 0)
+
+  const totalRealisasiOriginal = activeOrigItems.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
   }, 0)
@@ -282,11 +280,12 @@ export default function LpjPage() {
   const totalRealisasi = totalRealisasiOriginal + totalRealisasiExtra
   const sisaDana = Number(pengajuan?.total_pengajuan || 0) - totalRealisasi
 
+  // Hanya item yang qty > 0 yang muncul di checklist nota
   const allItemsForNota = [
-    ...items.map(item => ({
+    ...activeOrigItems.map(item => ({
       id: item.id,
       uraian: item.uraian,
-      satuan: realisasi[item.id]?.qty !== undefined ? item.satuan : item.satuan,
+      satuan: item.satuan,
       qty: realisasi[item.id]?.qty || 0,
       harga: realisasi[item.id]?.harga || 0,
       isExtra: false,
@@ -349,31 +348,37 @@ export default function LpjPage() {
     const { error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
     if (updateErr) { setError('Gagal approve: ' + updateErr.message); setApproving(false); return }
 
-    // Kirim notif sesuai status baru
     const notifMap = {
       approved_finance: { title: '✅ LPJ disetujui Finance', body: `LPJ "${pengajuan.judul}" udah di-acc Finance, tinggal CFO` },
       closed: { title: '🎉 LPJ closed', body: `LPJ "${pengajuan.judul}" udah selesai diverifikasi, beres!` },
     }
     const notifContent = notifMap[newStatus]
-    if (notifContent) {
-      notifyLpjUpdate({ ...pengajuan, id: pengajuanId }, existingLpj.submitted_by, notifContent)
-    }
+    if (notifContent) notifyLpjUpdate({ ...pengajuan, id: pengajuanId }, existingLpj.submitted_by, notifContent)
 
     setApproving(false)
     navigate(`/pengajuan/${pengajuanId}`)
   }
 
   function validateForm() {
-    const itemsValid = items.every(item => Number(realisasi[item.id]?.qty || 0) > 0)
-    if (!itemsValid) { setError('Qty realisasi semua item pengajuan harus diisi'); return false }
+    // Minimal 1 item original yang qty > 0
+    const anyItemFilled = items.some(item => Number(realisasi[item.id]?.qty || 0) > 0)
+    if (!anyItemFilled) { setError('Minimal 1 item harus ada realisasinya'); return false }
+
+    // Extra items harus lengkap kalau ada
     const extraValid = extraItems.every(e => e.uraian.trim() && Number(e.qty || 0) > 0 && Number(e.harga || 0) > 0)
     if (!extraValid) { setError('Item tambahan harus diisi lengkap (nama, qty, harga)'); return false }
+
     if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return false }
+
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
-    const unassignedOrig = items.filter(item => !allAssignedItems.has(item.id))
+
+    // Hanya cek item yang qty > 0
+    const unassignedOrig = activeOrigItems.filter(item => !allAssignedItems.has(item.id))
     if (unassignedOrig.length > 0) { setError(`Item "${unassignedOrig[0].uraian}" belum di-assign ke nota manapun`); return false }
+
     const unassignedExtra = extraItems.filter(e => !allAssignedItems.has(e.id))
     if (unassignedExtra.length > 0) { setError(`Item tambahan "${unassignedExtra[0].uraian || 'baru'}" belum di-assign ke nota manapun`); return false }
+
     return true
   }
 
@@ -401,14 +406,11 @@ export default function LpjPage() {
       }).select().single()
       if (lpjErr) throw lpjErr
       await insertNotas(lpj.id)
-
-      // Notif LPJ baru disubmit → Finance + CFO + pengaju
       notifyLpjUpdate(
         { ...pengajuan, id: pengajuanId },
         profile.id,
         { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` }
       )
-
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }
     setSubmitting(false)
@@ -445,12 +447,14 @@ export default function LpjPage() {
         const origItem = items.find(i => i.id === itemId)
         if (origItem) {
           const r = realisasi[itemId]
+          if (Number(r?.qty || 0) === 0) return sum // skip item qty 0
           return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
         }
         const extra = extraItems.find(e => e.id === itemId)
         if (extra) return sum + (Number(extra.qty || 0) * Number(extra.harga || 0))
         return sum
       }, 0)
+
       const { data: notaData, error: notaErr } = await supabase.from('lpj_nota').insert({
         lpj_id: lpjId, nama_nota: nota.nama_nota, total_nota: totalNota, file_url: fileUrl, file_name: fileName,
       }).select().single()
@@ -461,6 +465,7 @@ export default function LpjPage() {
           const origItem = items.find(i => i.id === itemId)
           if (origItem) {
             const r = realisasi[itemId]
+            if (Number(r?.qty || 0) === 0) return null // skip item qty 0
             return { nota_id: notaData.id, pengajuan_item_id: itemId, uraian: origItem.uraian, satuan: origItem.satuan, qty_pengajuan: origItem.qty, harga_pengajuan: origItem.harga_satuan, realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0) }
           }
           const extra = extraItems.find(e => e.id === itemId)
@@ -469,7 +474,7 @@ export default function LpjPage() {
           }
           return null
         }).filter(Boolean)
-        await supabase.from('lpj_nota_items').insert(notaItems)
+        if (notaItems.length > 0) await supabase.from('lpj_nota_items').insert(notaItems)
       }
     }
   }
@@ -478,7 +483,6 @@ export default function LpjPage() {
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
   const backTo = () => navigate(`/pengajuan/${pengajuanId}`)
-
   const inputStyle = { padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
   const renderForm = (isEditMode = false) => (
@@ -523,6 +527,7 @@ export default function LpjPage() {
 
       {error && <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>}
 
+      {/* Realisasi Item */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Realisasi Item</span>
@@ -536,15 +541,16 @@ export default function LpjPage() {
             {items.map(item => {
               const r = realisasi[item.id] || {}
               const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+              const isZero = Number(r.qty || 0) === 0
               return (
-                <div key={item.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8' }}>
+                <div key={item.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8', opacity: isZero ? 0.6 : 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 2 }}>{item.uraian}</div>
                   <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>Pengajuan: {item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Qty Realisasi</div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>Qty Realisasi <span style={{ color: '#BBB' }}>(0 = tidak jadi)</span></div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                        <input type="number" value={r.qty} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
                           style={{ flex: 1, padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'center', fontFamily: 'inherit' }} />
                         <span style={{ fontSize: 11, color: '#999' }}>{item.satuan}</span>
                       </div>
@@ -555,7 +561,10 @@ export default function LpjPage() {
                         style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>= {formatRp(subtotal)}</div>
+                  {isZero
+                    ? <div style={{ textAlign: 'right', fontSize: 12, color: '#BBB', fontStyle: 'italic' }}>Tidak jadi dibeli</div>
+                    : <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#C0272D' }}>= {formatRp(subtotal)}</div>
+                  }
                 </div>
               )
             })}
@@ -608,8 +617,9 @@ export default function LpjPage() {
               {items.map(item => {
                 const r = realisasi[item.id] || {}
                 const subtotal = Number(r.qty || 0) * Number(r.harga || 0)
+                const isZero = Number(r.qty || 0) === 0
                 return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8' }}>
+                  <tr key={item.id} style={{ borderBottom: '1px solid #F8F8F8', opacity: isZero ? 0.6 : 1 }}>
                     <td style={{ padding: '10px 12px', fontSize: 13, color: '#111', minWidth: 160 }}>
                       <div>{item.uraian}</div>
                       <div style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{formatRp(item.harga_satuan)} / {item.satuan}</div>
@@ -617,19 +627,21 @@ export default function LpjPage() {
                     <td style={{ padding: '10px 12px', fontSize: 13, color: '#999', textAlign: 'right', whiteSpace: 'nowrap' }}>{item.qty}</td>
                     <td style={{ padding: '10px 12px', fontSize: 12, color: '#AAA' }}>{item.satuan}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <input type="number" value={r.qty || ''} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                        style={{ ...inputStyle, width: 72 }} />
+                      <input type="number" value={r.qty} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
+                        placeholder="0"
+                        style={{ ...inputStyle, width: 72, borderColor: isZero ? '#E0E0E0' : '#C0272D' }} />
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       <input type="number" value={r.harga || ''} onChange={e => updateRealisasi(item.id, 'harga', e.target.value)}
                         style={{ ...inputStyle, width: 120 }} />
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatRp(subtotal)}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap', color: isZero ? '#BBB' : '#111' }}>
+                      {isZero ? <span style={{ fontStyle: 'italic', fontWeight: 400 }}>Tidak jadi</span> : formatRp(subtotal)}
+                    </td>
                     <td style={{ padding: '10px 12px' }} />
                   </tr>
                 )
               })}
-
               {extraItems.map((e, idx) => {
                 const subtotal = Number(e.qty || 0) * Number(e.harga || 0)
                 return (
@@ -672,6 +684,7 @@ export default function LpjPage() {
         )}
       </div>
 
+      {/* Notas */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
@@ -692,35 +705,39 @@ export default function LpjPage() {
 
             <div style={{ marginBottom: 14 }}>
               <div className="form-label" style={{ marginBottom: 8 }}>Item yang dicakup nota ini</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {allItemsForNota.map(item => {
-                  const subtotal = Number(item.qty || 0) * Number(item.harga || 0)
-                  const checked = nota.itemIds.includes(item.id)
-                  const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
-                  const disabled = assignedToOther && !checked
-                  return (
-                    <label key={item.id} style={{
-                      display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
-                      padding: '10px 12px', borderRadius: 8,
-                      background: checked ? (item.isExtra ? '#F0FFF4' : '#FFF5F5') : disabled ? '#F5F5F5' : '#FAFAFA',
-                      border: `1px solid ${checked ? (item.isExtra ? '#2E7D32' : '#C0272D') : '#F0F0F0'}`,
-                      opacity: disabled ? 0.5 : 1,
-                    }}>
-                      <input type="checkbox" checked={checked} disabled={disabled}
-                        onChange={() => !disabled && toggleItemInNota(idx, item.id)}
-                        style={{ accentColor: item.isExtra ? '#2E7D32' : '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {item.uraian}
-                          {item.isExtra && <span style={{ fontSize: 10, background: '#E8F5E9', color: '#2E7D32', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>+</span>}
-                          {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA' }}>(sudah di nota lain)</span>}
+              {allItemsForNota.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#BBB', fontStyle: 'italic', padding: '10px 0' }}>Isi qty realisasi item dulu di atas</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {allItemsForNota.map(item => {
+                    const subtotal = Number(item.qty || 0) * Number(item.harga || 0)
+                    const checked = nota.itemIds.includes(item.id)
+                    const assignedToOther = notas.some((n, nIdx) => nIdx !== idx && n.itemIds.includes(item.id))
+                    const disabled = assignedToOther && !checked
+                    return (
+                      <label key={item.id} style={{
+                        display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
+                        padding: '10px 12px', borderRadius: 8,
+                        background: checked ? (item.isExtra ? '#F0FFF4' : '#FFF5F5') : disabled ? '#F5F5F5' : '#FAFAFA',
+                        border: `1px solid ${checked ? (item.isExtra ? '#2E7D32' : '#C0272D') : '#F0F0F0'}`,
+                        opacity: disabled ? 0.5 : 1,
+                      }}>
+                        <input type="checkbox" checked={checked} disabled={disabled}
+                          onChange={() => !disabled && toggleItemInNota(idx, item.id)}
+                          style={{ accentColor: item.isExtra ? '#2E7D32' : '#C0272D', marginTop: isMobile ? 2 : 0, flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, color: disabled ? '#AAA' : '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {item.uraian}
+                            {item.isExtra && <span style={{ fontSize: 10, background: '#E8F5E9', color: '#2E7D32', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>+</span>}
+                            {assignedToOther && !checked && <span style={{ fontSize: 11, color: '#AAA' }}>(sudah di nota lain)</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{item.qty} {item.satuan} × {formatRp(item.harga)} = <strong>{formatRp(subtotal)}</strong></div>
                         </div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{item.qty} {item.satuan} × {formatRp(item.harga)} = <strong>{formatRp(subtotal)}</strong></div>
-                      </div>
-                    </label>
-                  )
-                })}
-              </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
