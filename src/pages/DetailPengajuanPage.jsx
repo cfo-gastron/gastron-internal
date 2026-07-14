@@ -133,14 +133,16 @@ export default function DetailPengajuanPage() {
     return false
   }
 
-  function canAccessLpj() {
-    if (!pengajuan) return false
-    if (pengajuan.status !== 'approved_ceo') return false
-    const role = profile?.role
-    if (role === 'cfo' || role === 'finance') return true
-    if (pengajuan.submitted_by === profile?.id) return true
-    return false
-  }
+function canAccessLpj() {
+  if (!pengajuan) return false
+  if (pengajuan.status !== 'approved_ceo') return false
+  // Reimbursement & Trip Operasional tidak perlu LPJ
+  if (pengajuan.tipe === 'reimbursement' || pengajuan.subkategori === 'Trip Operasional') return false
+  const role = profile?.role
+  if (role === 'cfo' || role === 'finance') return true
+  if (pengajuan.submitted_by === profile?.id) return true
+  return false
+}
 
   function canResubmit() {
     if (!pengajuan) return false
