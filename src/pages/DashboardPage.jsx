@@ -289,7 +289,6 @@ export default function DashboardPage() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {/* Search */}
               <div style={{ flex: 1, minWidth: 180, position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#BBB' }}>🔍</span>
                 <input
                   placeholder="Cari judul / kode surat..."
                   value={search}
