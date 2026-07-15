@@ -294,7 +294,7 @@ export default function DashboardPage() {
                   placeholder="Cari judul / kode surat..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }}
                 />
               </div>
 
