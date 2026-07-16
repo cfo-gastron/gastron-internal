@@ -47,7 +47,6 @@ function getLogCatatan(status, fullName) {
   return `Approved oleh ${fullName}`
 }
 
-// Notif title/body per status — bahasa santai
 function getNotifContent(newStatus, judul, fullName) {
   const map = {
     submitted: { title: '📝 Pengajuan baru', body: `${fullName} ngajuin "${judul}"` },
@@ -77,6 +76,7 @@ export default function DetailPengajuanPage() {
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [showHoldModal, setShowHoldModal] = useState(false)
+  const [showFinalApproveModal, setShowFinalApproveModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
   const [archiving, setArchiving] = useState(false)
@@ -133,16 +133,15 @@ export default function DetailPengajuanPage() {
     return false
   }
 
-function canAccessLpj() {
-  if (!pengajuan) return false
-  if (pengajuan.status !== 'approved_ceo') return false
-  // Reimbursement & Trip Operasional tidak perlu LPJ
-  if (pengajuan.tipe === 'reimbursement' || pengajuan.subkategori === 'Trip Operasional') return false
-  const role = profile?.role
-  if (role === 'cfo' || role === 'finance') return true
-  if (pengajuan.submitted_by === profile?.id) return true
-  return false
-}
+  function canAccessLpj() {
+    if (!pengajuan) return false
+    if (pengajuan.status !== 'approved_ceo') return false
+    if (pengajuan.tipe === 'reimbursement' || pengajuan.subkategori === 'Trip Operasional') return false
+    const role = profile?.role
+    if (role === 'cfo' || role === 'finance') return true
+    if (pengajuan.submitted_by === profile?.id) return true
+    return false
+  }
 
   function canResubmit() {
     if (!pengajuan) return false
@@ -154,6 +153,18 @@ function canAccessLpj() {
     if (!pengajuan) return false
     if (!isOwner) return false
     return pengajuan.status === 'hold'
+  }
+
+  // Cek apakah ini final approve (as CEO)
+  const isFinalApprove = pengajuan?.status === 'approved_cfo'
+
+  function handleApproveClick() {
+    // Kalau final approve, tampilkan modal konfirmasi dulu
+    if (isFinalApprove) {
+      setShowFinalApproveModal(true)
+    } else {
+      handleApprove()
+    }
   }
 
   async function handleApprove() {
@@ -182,11 +193,9 @@ function canAccessLpj() {
       action_by: profile.id, role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
-
-    // Kirim notif ke semua pihak relevan
     const notifContent = getNotifContent(newStatus, pengajuan.judul, profile.full_name)
     notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
-
+    setShowFinalApproveModal(false)
     fetchDetail()
     setActionLoading(false)
   }
@@ -202,10 +211,8 @@ function canAccessLpj() {
       action_by: profile.id, role_at_time: profile.role,
       rejection_type: rejectType, catatan: rejectReason,
     })
-
     const notifContent = getNotifContent(rejectType, pengajuan.judul, profile.full_name)
     notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
-
     setShowRejectModal(false)
     setRejectReason('')
     fetchDetail()
@@ -215,9 +222,7 @@ function canAccessLpj() {
   async function handleResubmit() {
     setActionLoading(true)
     await supabase.from('pengajuan').update({
-      status: 'submitted',
-      rejection_type: null,
-      rejection_reason: null,
+      status: 'submitted', rejection_type: null, rejection_reason: null,
       submitted_at: new Date().toISOString(),
     }).eq('id', id)
     await supabase.from('approval_logs').insert({
@@ -225,12 +230,10 @@ function canAccessLpj() {
       action_by: profile.id, role_at_time: profile.role,
       catatan: `Diajukan ulang oleh ${profile.full_name}`,
     })
-
     notifyPengajuanUpdate(
       { ...pengajuan, id },
       { title: '📝 Pengajuan diajukan ulang', body: `"${pengajuan.judul}" diajukan ulang oleh ${profile.full_name}` }
     )
-
     setShowHoldModal(false)
     fetchDetail()
     setActionLoading(false)
@@ -247,24 +250,27 @@ function canAccessLpj() {
 
   const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive
 
+  // Info penerima untuk modal final approve
+  const penerimaUtama = penerima[0]
+  const penerimaLabel = penerimaUtama
+    ? `${penerimaUtama.nama_penerima}${penerimaUtama.bank ? ` (${penerimaUtama.bank})` : ''}`
+    : '-'
+
   const ActionButtons = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-      {/* Approver actions */}
       {canApprove() && (
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setShowRejectModal(true)}
             style={{ flex: 1, padding: isMobile ? '13px 8px' : '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
             Tolak / Hold / Revisi
           </button>
-          <button onClick={handleApprove} disabled={actionLoading}
+          <button onClick={handleApproveClick} disabled={actionLoading}
             style={{ flex: 2, padding: isMobile ? '13px 8px' : '14px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
             {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status)}
           </button>
         </div>
       )}
 
-      {/* Pengaju: revision → edit & resubmit */}
       {canResubmit() && (
         <div style={{ background: '#FFF8E1', borderRadius: 12, border: '1px solid #FFE082', padding: '16px' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#B8860B', marginBottom: 4 }}>Pengajuan perlu direvisi</div>
@@ -282,7 +288,6 @@ function canAccessLpj() {
         </div>
       )}
 
-      {/* Pengaju: hold → release */}
       {canReleaseHold() && (
         <div style={{ background: '#F3E5F5', borderRadius: 12, border: '1px solid #CE93D8', padding: '16px' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#6A1B9A', marginBottom: 4 }}>Pengajuan sedang ditahan</div>
@@ -294,7 +299,6 @@ function canAccessLpj() {
         </div>
       )}
 
-      {/* LPJ — label dinamis */}
       {canAccessLpj() && (
         <button onClick={() => navigate(`/lpj/${id}`)}
           style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#1565C0', border: 'none', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -302,14 +306,11 @@ function canAccessLpj() {
         </button>
       )}
 
-      {/* Download Surat PDF */}
-      <button
-        onClick={() => generatePengajuanPdf(pengajuan, items, penerima, logs)}
+      <button onClick={() => generatePengajuanPdf(pengajuan, items, penerima, logs)}
         style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #C0272D', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#C0272D', cursor: 'pointer', fontFamily: 'inherit' }}>
         📄 Download Surat Pengajuan
       </button>
 
-      {/* Archive */}
       {canArchive && (
         <button onClick={handleArchive} disabled={archiving}
           style={{ width: '100%', padding: isMobile ? '13px' : '14px', background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: '#888', cursor: 'pointer', fontFamily: 'inherit', opacity: archiving ? 0.7 : 1 }}>
@@ -322,7 +323,6 @@ function canAccessLpj() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
 
-      {/* SIDEBAR desktop */}
       {!isMobile && (
         <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50, display: 'flex', flexDirection: 'column', padding: '24px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
@@ -339,10 +339,8 @@ function canAccessLpj() {
         </div>
       )}
 
-      {/* MAIN */}
       <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 280px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
 
-        {/* Top bar */}
         {isMobile ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>←</button>
@@ -357,7 +355,6 @@ function canAccessLpj() {
           </button>
         )}
 
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111', lineHeight: 1.3 }}>{pengajuan.judul}</div>
@@ -368,7 +365,6 @@ function canAccessLpj() {
           </span>
         </div>
 
-        {/* Meta info */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 14 : 20 }}>
             {[
@@ -399,7 +395,6 @@ function canAccessLpj() {
           )}
         </div>
 
-        {/* Items */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Item Pengajuan</div>
           {isMobile ? (
@@ -453,7 +448,6 @@ function canAccessLpj() {
           )}
         </div>
 
-        {/* Penerima */}
         {penerima.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Penerima Pembayaran</div>
@@ -477,7 +471,6 @@ function canAccessLpj() {
           </div>
         )}
 
-        {/* Attachments */}
         {attachments.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Lampiran</div>
@@ -493,7 +486,6 @@ function canAccessLpj() {
           </div>
         )}
 
-        {/* Timeline */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Timeline Approval</div>
           {logs.length === 0 ? (
@@ -502,18 +494,10 @@ function canAccessLpj() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {logs.map((log) => (
                 <div key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : '#C0272D',
-                    marginTop: 4, flexShrink: 0
-                  }} />
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>
-                      {log.action === 'submitted' ? 'Pengajuan disubmit'
-                        : log.action === 'approved' ? 'Disetujui'
-                        : log.action === 'revision' ? 'Diminta revisi'
-                        : log.action === 'hold' ? 'Ditahan'
-                        : 'Ditolak'}
+                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : 'Ditolak'}
                       {log.user && <span style={{ color: '#999', fontWeight: 400 }}> oleh {log.user.full_name}</span>}
                     </div>
                     {log.catatan && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{log.catatan}</div>}
@@ -525,16 +509,9 @@ function canAccessLpj() {
           )}
         </div>
 
-        {/* Action buttons */}
         {hasActions && (
           isMobile ? (
-            <div style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0,
-              background: '#fff', borderTop: '1px solid #EBEBEB',
-              padding: '12px 16px',
-              paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))',
-              zIndex: 90,
-            }}>
+            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90 }}>
               <ActionButtons />
             </div>
           ) : (
@@ -543,15 +520,34 @@ function canAccessLpj() {
         )}
       </div>
 
+      {/* FINAL APPROVE MODAL */}
+      {showFinalApproveModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '28px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 420 }}>
+            {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
+            <div style={{ fontSize: 20, textAlign: 'center', marginBottom: 12 }}>💸</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8, textAlign: 'center' }}>Konfirmasi Transfer</div>
+            <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>
+              Apakah dana <strong style={{ color: '#C0272D' }}>{formatRp(pengajuan.total_pengajuan)}</strong> ke <strong>{penerimaLabel}</strong> sudah ditransfer?
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowFinalApproveModal(false)}
+                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Belum
+              </button>
+              <button onClick={handleApprove} disabled={actionLoading}
+                style={{ flex: 1, padding: '13px', background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+                {actionLoading ? 'Memproses...' : 'Sudah Ditransfer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* REJECT MODAL */}
       {showRejectModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{
-            background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16,
-            padding: isMobile ? '24px 20px' : 32,
-            paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32,
-            width: isMobile ? '100%' : 480,
-          }}>
+          <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '24px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 480 }}>
             {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
             <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 18 }}>Tolak Pengajuan</div>
             <div style={{ marginBottom: 16 }}>
@@ -584,12 +580,7 @@ function canAccessLpj() {
       {/* HOLD RELEASE MODAL */}
       {showHoldModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{
-            background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16,
-            padding: isMobile ? '24px 20px' : 32,
-            paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32,
-            width: isMobile ? '100%' : 440,
-          }}>
+          <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '24px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 440 }}>
             {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
             <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8 }}>🔓 Release Hold</div>
             <div style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>Pilih tindak lanjut untuk pengajuan ini</div>

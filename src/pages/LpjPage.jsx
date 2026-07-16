@@ -18,6 +18,7 @@ function formatDate(d) {
 function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isMobile, onBack, onEdit }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
+  const [showCloseModal, setShowCloseModal] = useState(false)
 
   const canApproveLpj = () => {
     if (lpj.status === 'submitted' && (role === 'finance' || role === 'cfo')) return true
@@ -37,6 +38,14 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
     if (lpj.status === 'submitted' && role === 'cfo') return '✓ Approve LPJ (CFO)'
     if (lpj.status === 'approved_finance' && role === 'cfo') return '✓ Final Approve & Close LPJ'
     return ''
+  }
+
+  // Cek apakah action ini akan close LPJ
+  const willClose = (lpj.status === 'submitted' && role === 'cfo') || lpj.status === 'approved_finance'
+
+  function handleApproveClick() {
+    if (willClose) setShowCloseModal(true)
+    else onApprove()
   }
 
   const statusLabel = { submitted: 'Menunggu Approval', approved_finance: 'Menunggu CFO', closed: 'Closed ✓' }
@@ -155,12 +164,12 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
       {canApproveLpj() && (
         isMobile ? (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EBEBEB', padding: '12px 16px', paddingBottom: 'max(32px, calc(20px + env(safe-area-inset-bottom)))', zIndex: 90 }}>
-            <button onClick={onApprove} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1 }}>
+            <button onClick={handleApproveClick} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1 }}>
               {approving ? 'Memproses...' : approveLabel()}
             </button>
           </div>
         ) : (
-          <button onClick={onApprove} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1, marginBottom: 12 }}>
+          <button onClick={handleApproveClick} disabled={approving} style={{ width: '100%', padding: 14, background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1, marginBottom: 12 }}>
             {approving ? 'Memproses...' : approveLabel()}
           </button>
         )
@@ -170,6 +179,30 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
         <div style={{ background: '#E8F5E9', borderRadius: 12, padding: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#2E7D32' }}>✓ LPJ Closed</div>
           <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Laporan pertanggungjawaban telah selesai diverifikasi</div>
+        </div>
+      )}
+
+      {/* CLOSE LPJ MODAL */}
+      {showCloseModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '28px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 420 }}>
+            {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
+            <div style={{ fontSize: 20, textAlign: 'center', marginBottom: 12 }}>📋</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8, textAlign: 'center' }}>Close LPJ?</div>
+            <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>
+              Yakin mau close LPJ ini? Total realisasi <strong style={{ color: '#2E7D32' }}>{formatRp(lpj.total_realisasi)}</strong>, sisa dana <strong style={{ color: '#C0272D' }}>{formatRp(Math.abs(sisaDana))}</strong>. Setelah closed tidak bisa diubah.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowCloseModal(false)}
+                style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Batal
+              </button>
+              <button onClick={() => { setShowCloseModal(false); onApprove() }} disabled={approving}
+                style={{ flex: 1, padding: '13px', background: '#2E7D32', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: approving ? 0.7 : 1 }}>
+                {approving ? 'Memproses...' : 'Ya, Close LPJ'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -269,9 +302,7 @@ export default function LpjPage() {
     setExtraItems(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
   }
 
-  // Item original yang qty > 0 (yang jadi dibeli)
   const activeOrigItems = items.filter(item => Number(realisasi[item.id]?.qty || 0) > 0)
-
   const totalRealisasiOriginal = activeOrigItems.reduce((sum, item) => {
     const r = realisasi[item.id]
     return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
@@ -280,23 +311,14 @@ export default function LpjPage() {
   const totalRealisasi = totalRealisasiOriginal + totalRealisasiExtra
   const sisaDana = Number(pengajuan?.total_pengajuan || 0) - totalRealisasi
 
-  // Hanya item yang qty > 0 yang muncul di checklist nota
   const allItemsForNota = [
     ...activeOrigItems.map(item => ({
-      id: item.id,
-      uraian: item.uraian,
-      satuan: item.satuan,
-      qty: realisasi[item.id]?.qty || 0,
-      harga: realisasi[item.id]?.harga || 0,
-      isExtra: false,
+      id: item.id, uraian: item.uraian, satuan: item.satuan,
+      qty: realisasi[item.id]?.qty || 0, harga: realisasi[item.id]?.harga || 0, isExtra: false,
     })),
     ...extraItems.map(e => ({
-      id: e.id,
-      uraian: e.uraian || '(item tambahan)',
-      satuan: e.satuan,
-      qty: e.qty || 0,
-      harga: e.harga || 0,
-      isExtra: true,
+      id: e.id, uraian: e.uraian || '(item tambahan)', satuan: e.satuan,
+      qty: e.qty || 0, harga: e.harga || 0, isExtra: true,
     })),
   ]
 
@@ -360,25 +382,16 @@ export default function LpjPage() {
   }
 
   function validateForm() {
-    // Minimal 1 item original yang qty > 0
     const anyItemFilled = items.some(item => Number(realisasi[item.id]?.qty || 0) > 0)
     if (!anyItemFilled) { setError('Minimal 1 item harus ada realisasinya'); return false }
-
-    // Extra items harus lengkap kalau ada
     const extraValid = extraItems.every(e => e.uraian.trim() && Number(e.qty || 0) > 0 && Number(e.harga || 0) > 0)
     if (!extraValid) { setError('Item tambahan harus diisi lengkap (nama, qty, harga)'); return false }
-
     if (notas.some(n => !n.nama_nota.trim())) { setError('Nama nota wajib diisi semua'); return false }
-
     const allAssignedItems = new Set(notas.flatMap(n => n.itemIds))
-
-    // Hanya cek item yang qty > 0
     const unassignedOrig = activeOrigItems.filter(item => !allAssignedItems.has(item.id))
     if (unassignedOrig.length > 0) { setError(`Item "${unassignedOrig[0].uraian}" belum di-assign ke nota manapun`); return false }
-
     const unassignedExtra = extraItems.filter(e => !allAssignedItems.has(e.id))
     if (unassignedExtra.length > 0) { setError(`Item tambahan "${unassignedExtra[0].uraian || 'baru'}" belum di-assign ke nota manapun`); return false }
-
     return true
   }
 
@@ -407,8 +420,7 @@ export default function LpjPage() {
       if (lpjErr) throw lpjErr
       await insertNotas(lpj.id)
       notifyLpjUpdate(
-        { ...pengajuan, id: pengajuanId },
-        profile.id,
+        { ...pengajuan, id: pengajuanId }, profile.id,
         { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` }
       )
       await fetchData()
@@ -447,7 +459,7 @@ export default function LpjPage() {
         const origItem = items.find(i => i.id === itemId)
         if (origItem) {
           const r = realisasi[itemId]
-          if (Number(r?.qty || 0) === 0) return sum // skip item qty 0
+          if (Number(r?.qty || 0) === 0) return sum
           return sum + (Number(r?.qty || 0) * Number(r?.harga || 0))
         }
         const extra = extraItems.find(e => e.id === itemId)
@@ -465,7 +477,7 @@ export default function LpjPage() {
           const origItem = items.find(i => i.id === itemId)
           if (origItem) {
             const r = realisasi[itemId]
-            if (Number(r?.qty || 0) === 0) return null // skip item qty 0
+            if (Number(r?.qty || 0) === 0) return null
             return { nota_id: notaData.id, pengajuan_item_id: itemId, uraian: origItem.uraian, satuan: origItem.satuan, qty_pengajuan: origItem.qty, harga_pengajuan: origItem.harga_satuan, realisasi_qty: Number(r?.qty || 0), realisasi_harga: Number(r?.harga || 0) }
           }
           const extra = extraItems.find(e => e.id === itemId)
@@ -527,7 +539,6 @@ export default function LpjPage() {
 
       {error && <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#C0272D' }}>{error}</div>}
 
-      {/* Realisasi Item */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Realisasi Item</span>
@@ -627,8 +638,7 @@ export default function LpjPage() {
                     <td style={{ padding: '10px 12px', fontSize: 13, color: '#999', textAlign: 'right', whiteSpace: 'nowrap' }}>{item.qty}</td>
                     <td style={{ padding: '10px 12px', fontSize: 12, color: '#AAA' }}>{item.satuan}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <input type="number" value={r.qty} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)}
-                        placeholder="0"
+                      <input type="number" value={r.qty} onChange={e => updateRealisasi(item.id, 'qty', e.target.value)} placeholder="0"
                         style={{ ...inputStyle, width: 72, borderColor: isZero ? '#E0E0E0' : '#C0272D' }} />
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
@@ -684,7 +694,6 @@ export default function LpjPage() {
         )}
       </div>
 
-      {/* Notas */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
