@@ -15,6 +15,32 @@ function formatDate(d) {
   })
 }
 
+// Tombol hapus dengan konfirmasi inline
+function DeleteButton({ onConfirm, style = {} }) {
+  const [confirming, setConfirming] = useState(false)
+  if (confirming) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 12, color: '#C0272D', fontWeight: 500 }}>Hapus?</span>
+        <button onClick={() => { setConfirming(false); onConfirm() }}
+          style={{ background: '#C0272D', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+          Ya
+        </button>
+        <button onClick={() => setConfirming(false)}
+          style={{ background: '#F5F5F5', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+          Batal
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button onClick={() => setConfirming(true)}
+      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1, ...style }}>
+      ×
+    </button>
+  )
+}
+
 function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isMobile, onBack, onEdit }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
@@ -40,7 +66,6 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
     return ''
   }
 
-  // Cek apakah action ini akan close LPJ
   const willClose = (lpj.status === 'submitted' && role === 'cfo') || lpj.status === 'approved_finance'
 
   function handleApproveClick() {
@@ -585,7 +610,7 @@ export default function LpjPage() {
                 <div key={e.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8', background: '#FAFFF4' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <div style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item Tambahan #{idx + 1}</div>
-                    <button onClick={() => removeExtraItem(e.id)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                    <DeleteButton onConfirm={() => removeExtraItem(e.id)} />
                   </div>
                   <input placeholder="Nama item" value={e.uraian} onChange={ev => updateExtraItem(e.id, 'uraian', ev.target.value)}
                     style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box' }} />
@@ -677,7 +702,7 @@ export default function LpjPage() {
                     </td>
                     <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#2E7D32', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatRp(subtotal)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                      <button onClick={() => removeExtraItem(e.id)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                      <DeleteButton onConfirm={() => removeExtraItem(e.id)} />
                     </td>
                   </tr>
                 )
@@ -694,6 +719,7 @@ export default function LpjPage() {
         )}
       </div>
 
+      {/* Notas */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>Bukti Nota</div>
@@ -704,7 +730,7 @@ export default function LpjPage() {
           <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 20, marginBottom: 14 }} onPaste={e => handlePaste(idx, e)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Nota #{idx + 1}</div>
-              {notas.length > 1 && <button onClick={() => removeNota(idx)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20 }}>×</button>}
+              {notas.length > 1 && <DeleteButton onConfirm={() => removeNota(idx)} />}
             </div>
 
             <div className="form-group" style={{ marginBottom: 14 }}>
@@ -758,7 +784,7 @@ export default function LpjPage() {
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{nota.file.name || 'Gambar dari clipboard'}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>{nota.file.size ? `${(nota.file.size / 1024).toFixed(1)} KB` : ''}</div>
                   </div>
-                  <button onClick={() => updateNota(idx, 'file', null)} style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  <DeleteButton onConfirm={() => updateNota(idx, 'file', null)} />
                 </div>
               ) : nota.existingFileUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F7FF', borderRadius: 8, padding: '10px 14px', border: '1px solid #BBDEFB' }}>
