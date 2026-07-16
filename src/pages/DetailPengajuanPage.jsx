@@ -27,6 +27,23 @@ const STATUS_CLASS = {
   rejected: 'badge-rejected',
 }
 
+// Mapping subkategori pengajuan → cashflow
+const CASHFLOW_MAPPING = {
+  'Upah, Bensin, Parkir, Tol Kendaraan': { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex1', subcat_name: 'Upah, Bensin, Parkir, Tol Kendaraan' },
+  'Operasional Kandang':                 { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex2', subcat_name: 'Operasional Kandang' },
+  'Pemeliharaan Alat':                   { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex6', subcat_name: 'Pemeliharaan Alat' },
+  'Pemeliharaan Kendaraan':              { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex5', subcat_name: 'Pemeliharaan Kendaraan' },
+  'Marketing/Mobilisasi Operasional':    { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex4', subcat_name: 'Marketing/Mobilisasi Operasional' },
+  'Pembelian Alat':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex2', subcat_name: 'Pembelian Alat' },
+  'DP Truk':                             { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex1', subcat_name: 'Pembelian Aset' },
+  'Perjalanan Dinas':                    { cat_id: 'd_corp', cat_name: 'Corporate Support', subcat_id: 'd_corp4', subcat_name: 'Perjalanan Dinas' },
+  'Perlengkapan Kantor':                 { cat_id: 'd_off', cat_name: 'Office', subcat_id: 'd_off2', subcat_name: 'Perlengkapan Kantor' },
+}
+
+function getCashflowCategory(subkategori) {
+  return CASHFLOW_MAPPING[subkategori] || { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
+}
+
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 }
@@ -155,16 +172,11 @@ export default function DetailPengajuanPage() {
     return pengajuan.status === 'hold'
   }
 
-  // Cek apakah ini final approve (as CEO)
   const isFinalApprove = pengajuan?.status === 'approved_cfo'
 
   function handleApproveClick() {
-    // Kalau final approve, tampilkan modal konfirmasi dulu
-    if (isFinalApprove) {
-      setShowFinalApproveModal(true)
-    } else {
-      handleApprove()
-    }
+    if (isFinalApprove) setShowFinalApproveModal(true)
+    else handleApprove()
   }
 
   async function handleApprove() {
@@ -172,6 +184,7 @@ export default function DetailPengajuanPage() {
     const status = pengajuan.status
     let updateData = {}
     let newStatus = ''
+
     if (status === 'submitted') {
       if (pengajuan.division === 'FIN') {
         updateData = { status: 'approved_cfo', approved_step1_at: new Date().toISOString(), step1_approved_by: profile.id, approved_cfo_at: new Date().toISOString(), cfo_approved_by: profile.id }
@@ -187,12 +200,35 @@ export default function DetailPengajuanPage() {
       updateData = { status: 'approved_ceo', approved_ceo_at: new Date().toISOString(), ceo_approved_by: profile.id }
       newStatus = 'approved_ceo'
     }
+
     await supabase.from('pengajuan').update(updateData).eq('id', id)
     await supabase.from('approval_logs').insert({
       pengajuan_id: id, action: 'approved',
       action_by: profile.id, role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
+
+    // Insert ke cashflow kalau final approve (CEO)
+    if (newStatus === 'approved_ceo') {
+      const mapping = getCashflowCategory(pengajuan.subkategori)
+      await supabase.from('cashflow_transactions').insert({
+        name: pengajuan.judul,
+        amount: Math.round(Number(pengajuan.total_pengajuan)),
+        date: new Date().toISOString().split('T')[0],
+        type: 'out',
+        account: 'utama',
+        cat_id: mapping.cat_id,
+        cat_name: mapping.cat_name,
+        subcat_id: mapping.subcat_id,
+        subcat_name: mapping.subcat_name,
+        is_est: false,
+        is_kemb: false,
+        linked_id: id,
+        notes: `Auto dari pengajuan ${pengajuan.kode_surat}`,
+        created_by: profile.id,
+      })
+    }
+
     const notifContent = getNotifContent(newStatus, pengajuan.judul, profile.full_name)
     notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
     setShowFinalApproveModal(false)
@@ -249,8 +285,6 @@ export default function DetailPengajuanPage() {
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
   const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive
-
-  // Info penerima untuk modal final approve
   const penerimaUtama = penerima[0]
   const penerimaLabel = penerimaUtama
     ? `${penerimaUtama.nama_penerima}${penerimaUtama.bank ? ` (${penerimaUtama.bank})` : ''}`

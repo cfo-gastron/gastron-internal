@@ -18,35 +18,39 @@ const TIPE_OPTIONS = [
   { value: 'reimbursement', label: 'Reimbursement' },
 ]
 
+// Penjelasan per subkategori
+const SUBKATEGORI_INFO = {
+  'Upah, Bensin, Parkir, Tol Kendaraan': 'Biaya perjalanan harian driver atau teknisi — bensin, tol, parkir, dan upah harian',
+  'Operasional Kandang': 'Kebutuhan tim teknisi yang harus berangkat ke kandang — termasuk mob to mob dan recall PRS',
+  'Pemeliharaan Alat': 'Servis atau perbaikan alat-alat yang ada di kandang',
+  'Pemeliharaan Kendaraan': 'Servis, ganti oli, ban, atau perbaikan kendaraan operasional',
+  'Marketing/Mobilisasi Operasional': 'Khusus untuk keperluan Pak Insan & Fajar ke kandang',
+  'Pembelian Alat': 'Beli alat baru untuk operasional — tools, perlengkapan teknis, dll',
+  'Pembelian Aset': 'Untuk pembelian aset yang jumlahnya besar — kayak DP truk atau pembuatan GTM',
+  'Perjalanan Dinas': 'Perjalanan resmi ke luar kota untuk keperluan bisnis',
+  'Perlengkapan Kantor': 'Kebutuhan kantor — ATK, peralatan, listrik, wifi, dll',
+}
+
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 }
 
-// Komponen tombol hapus dengan konfirmasi inline
 function DeleteButton({ onConfirm, style = {} }) {
   const [confirming, setConfirming] = useState(false)
-
   if (confirming) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 12, color: '#C0272D', fontWeight: 500 }}>Hapus?</span>
         <button onClick={() => { setConfirming(false); onConfirm() }}
-          style={{ background: '#C0272D', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
-          Ya
-        </button>
+          style={{ background: '#C0272D', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Ya</button>
         <button onClick={() => setConfirming(false)}
-          style={{ background: '#F5F5F5', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-          Batal
-        </button>
+          style={{ background: '#F5F5F5', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
       </div>
     )
   }
-
   return (
     <button onClick={() => setConfirming(true)}
-      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1, ...style }}>
-      ×
-    </button>
+      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1, ...style }}>×</button>
   )
 }
 
@@ -61,6 +65,7 @@ export default function FormPengajuanPage() {
   const [subkategoriList, setSubkategoriList] = useState([])
   const [isLainnya, setIsLainnya] = useState(false)
   const [lainnyaText, setLainnyaText] = useState('')
+  const [showSubInfo, setShowSubInfo] = useState(false)
   const [metodeBayar, setMetodeBayar] = useState('Transfer')
   const [catatan, setCatatan] = useState('')
   const [items, setItems] = useState([{ uraian: '', qty: 1, satuan: 'Pcs', harga_satuan: 0 }])
@@ -71,6 +76,7 @@ export default function FormPengajuanPage() {
 
   const division = DIVISION_MAP[profile?.role] || 'OPR'
   const total = items.reduce((s, i) => s + (Number(i.qty) * Number(i.harga_satuan)), 0)
+  const subInfo = SUBKATEGORI_INFO[subkategori]
 
   useEffect(() => {
     fetchSubkategori()
@@ -80,13 +86,13 @@ export default function FormPengajuanPage() {
   }, [])
 
   async function fetchSubkategori() {
-    const { data } = await supabase.from('subkategori_pengajuan').select('nama').order('created_at')
+    const { data } = await supabase.from('subkategori_pengajuan').select('nama').order('nama')
     setSubkategoriList(data?.map(d => d.nama) || [])
   }
 
   function handleSubkategoriChange(val) {
-    if (val === 'lainnya') { setIsLainnya(true); setSubkategori('') }
-    else { setIsLainnya(false); setSubkategori(val) }
+    if (val === 'lainnya') { setIsLainnya(true); setSubkategori(''); setShowSubInfo(false) }
+    else { setIsLainnya(false); setSubkategori(val); setShowSubInfo(false) }
   }
 
   function addItem() { setItems([...items, { uraian: '', qty: 1, satuan: 'Pcs', harga_satuan: 0 }]) }
@@ -202,12 +208,18 @@ export default function FormPengajuanPage() {
         <div style={cardStyle}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 16 }}>Informasi Pengajuan</div>
 
+          {/* Judul — dengan keterangan konteks */}
           <div className="form-group">
             <label className="form-label">Judul Pengajuan *</label>
-            <input className="form-input" placeholder="Contoh: Kebutuhan Kandang Service Truk"
+            <input className="form-input"
+              placeholder="Tulis konteks pengajuannya — contoh: Service Truk Euro 2 Kandang Asrul, Mob to Mob Kandang Rahayu"
               value={judul} onChange={e => setJudul(e.target.value)} />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 6 }}>
+              💡 Tulis konteks spesifiknya di sini — kandang mana, untuk apa, siapa yang terlibat
+            </div>
           </div>
 
+          {/* Tipe */}
           <div className="form-group">
             <label className="form-label">Tipe Pengajuan *</label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -220,6 +232,7 @@ export default function FormPengajuanPage() {
             </div>
           </div>
 
+          {/* Subkategori + accordion penjelasan */}
           <div className="form-group">
             <label className="form-label">Subkategori *</label>
             <select className="form-input" value={isLainnya ? 'lainnya' : subkategori} onChange={e => handleSubkategoriChange(e.target.value)}>
@@ -227,12 +240,32 @@ export default function FormPengajuanPage() {
               {subkategoriList.map(s => <option key={s} value={s}>{s}</option>)}
               <option value="lainnya">Lainnya (ketik baru)</option>
             </select>
+
+            {/* Accordion penjelasan */}
+            {subInfo && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSubInfo(!showSubInfo)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#1565C0' }}>
+                  <span style={{ fontSize: 10, transition: 'transform 0.2s', display: 'inline-block', transform: showSubInfo ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                  {showSubInfo ? 'Sembunyikan penjelasan' : 'Apa itu ' + subkategori + '?'}
+                </button>
+                {showSubInfo && (
+                  <div style={{ marginTop: 8, background: '#EEF4FF', border: '1px solid #BBDEFB', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#1565C0', lineHeight: 1.6 }}>
+                    {subInfo}
+                  </div>
+                )}
+              </div>
+            )}
+
             {isLainnya && (
               <input className="form-input" placeholder="Ketik subkategori baru"
                 value={lainnyaText} onChange={e => setLainnyaText(e.target.value)} style={{ marginTop: 8 }} />
             )}
           </div>
 
+          {/* Metode bayar */}
           <div className="form-group">
             <label className="form-label">Metode Pembayaran</label>
             <select className="form-input" value={metodeBayar} onChange={e => setMetodeBayar(e.target.value)}>
@@ -241,9 +274,10 @@ export default function FormPengajuanPage() {
             </select>
           </div>
 
+          {/* Catatan */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Catatan</label>
-            <textarea className="form-input" placeholder="Catatan tambahan (opsional)"
+            <textarea className="form-input" placeholder="Catatan tambahan kalau ada"
               value={catatan} onChange={e => setCatatan(e.target.value)} rows={3} style={{ resize: 'vertical' }} />
           </div>
         </div>
@@ -259,12 +293,10 @@ export default function FormPengajuanPage() {
           </div>
 
           {items.map((item, idx) => (
-            <div key={idx} style={{ background: '#FAFAFA', borderRadius: 10, padding: '14px', marginBottom: 10, position: 'relative' }}>
+            <div key={idx} style={{ background: '#FAFAFA', borderRadius: 10, padding: '14px', marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: '#999' }}>Item #{idx + 1}</div>
-                {items.length > 1 && (
-                  <DeleteButton onConfirm={() => removeItem(idx)} />
-                )}
+                {items.length > 1 && <DeleteButton onConfirm={() => removeItem(idx)} />}
               </div>
 
               <div style={{ marginBottom: 10 }}>
