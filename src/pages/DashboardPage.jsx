@@ -1,5 +1,3 @@
-// DashboardPage.jsx — with search, filter, pagination, skip LPJ for reimbursement & trip operasional
-
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -151,7 +149,33 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
-  // Filter + search (client-side)
+  const stats = {
+    total: pengajuan.length,
+    pending: pengajuan.filter(p => ['submitted', 'approved_step1', 'approved_cfo'].includes(p.status)).length,
+    approved: pengajuan.filter(p => p.status === 'approved_ceo').length,
+    rejected: pengajuan.filter(p => ['rejected', 'hold', 'revision'].includes(p.status)).length,
+  }
+
+  // Handle klik card stats
+  function handleStatClick(type) {
+    if (type === 'total') { setFilterStatus(''); setFilterDivisi(''); setSearch('') }
+    else if (type === 'pending') setFilterStatus('submitted')
+    else if (type === 'approved') setFilterStatus('approved_ceo')
+    else if (type === 'rejected') setFilterStatus('rejected')
+    setCurrentPage(1)
+  }
+
+  // Cek active stat card
+  function getActiveStatType() {
+    if (!filterStatus && !search && !filterDivisi) return 'total'
+    if (['submitted', 'approved_step1', 'approved_cfo'].includes(filterStatus)) return 'pending'
+    if (filterStatus === 'approved_ceo') return 'approved'
+    if (['rejected', 'hold', 'revision'].includes(filterStatus)) return 'rejected'
+    return null
+  }
+  const activeStatType = getActiveStatType()
+
+  // Filter + search
   const filtered = pengajuan.filter(p => {
     const q = search.toLowerCase()
     const matchSearch = !q || p.judul?.toLowerCase().includes(q) || p.kode_surat?.toLowerCase().includes(q)
@@ -160,20 +184,19 @@ export default function DashboardPage() {
     return matchSearch && matchStatus && matchDivisi
   })
 
-  // Reset ke page 1 saat filter berubah
   useEffect(() => { setCurrentPage(1) }, [search, filterStatus, filterDivisi])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  const stats = {
-    total: pengajuan.length,
-    pending: pengajuan.filter(p => ['submitted', 'approved_step1', 'approved_cfo'].includes(p.status)).length,
-    approved: pengajuan.filter(p => p.status === 'approved_ceo').length,
-    rejected: pengajuan.filter(p => ['rejected', 'hold', 'revision'].includes(p.status)).length,
-  }
-
   const hasFilter = search || filterStatus || filterDivisi
+
+  const STAT_CARDS = [
+    { type: 'total', label: 'Total', value: stats.total, color: '#111', activeColor: '#C0272D' },
+    { type: 'pending', label: 'Menunggu ACC', value: stats.pending, color: '#B8860B', activeColor: '#B8860B' },
+    { type: 'approved', label: 'Transferred', value: stats.approved, color: '#2E7D32', activeColor: '#2E7D32' },
+    { type: 'rejected', label: 'Ditolak / Hold', value: stats.rejected, color: '#C0272D', activeColor: '#C0272D' },
+  ]
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
@@ -256,28 +279,41 @@ export default function DashboardPage() {
           <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
 
-        {/* Stats */}
+        {/* Stats — clickable */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-          {[
-            { label: 'Total', value: stats.total, color: '#111' },
-            { label: 'Menunggu ACC', value: stats.pending, color: '#B8860B' },
-            { label: 'Transferred', value: stats.approved, color: '#2E7D32' },
-            { label: 'Ditolak / Hold', value: stats.rejected, color: '#C0272D' },
-          ].map((s, i) => (
-            <div key={i} style={{ background: '#fff', borderRadius: 12, padding: isMobile ? '14px 12px' : '20px', border: '1px solid #F0F0F0' }}>
-              <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>{s.label}</div>
-              <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: s.color }}>{s.value}</div>
-            </div>
-          ))}
+          {STAT_CARDS.map((s) => {
+            const isActive = activeStatType === s.type
+            return (
+              <div key={s.type} onClick={() => handleStatClick(s.type)}
+                style={{
+                  background: isActive ? '#FFF0F0' : '#fff',
+                  borderRadius: 12,
+                  padding: isMobile ? '14px 12px' : '20px',
+                  border: `1.5px solid ${isActive ? '#C0272D' : '#F0F0F0'}`,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}>
+                <div style={{ fontSize: 10, color: isActive ? '#C0272D' : '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>{s.label}</div>
+                <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: isActive ? '#C0272D' : s.color }}>{s.value}</div>
+              </div>
+            )
+          })}
         </div>
 
         {/* Table */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden' }}>
 
-          {/* Header + search + filter */}
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #F5F5F5' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>Daftar Pengajuan</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
+                Daftar Pengajuan
+                {activeStatType && activeStatType !== 'total' && (
+                  <span style={{ marginLeft: 8, fontSize: 11, background: '#FFF0F0', color: '#C0272D', borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>
+                    {activeStatType === 'pending' ? 'Menunggu ACC' : activeStatType === 'approved' ? 'Transferred' : 'Ditolak / Hold'}
+                    <button onClick={() => { setFilterStatus(''); setCurrentPage(1) }} style={{ background: 'none', border: 'none', color: '#C0272D', cursor: 'pointer', marginLeft: 4, fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                  </span>
+                )}
+              </div>
               {!isApprover && !isMobile && (
                 <button onClick={() => navigate('/pengajuan/baru')} style={{ padding: '8px 16px', background: '#C0272D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   + Buat Pengajuan
@@ -285,20 +321,12 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Search + filter row */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {/* Search */}
-              <div style={{ flex: 1, minWidth: 180, position: 'relative' }}>
-                <input
-                  placeholder="Cari judul / kode surat..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }}
-                />
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <input placeholder="Cari judul / kode surat..." value={search} onChange={e => setSearch(e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
               </div>
-
-              {/* Filter status */}
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }}
                 style={{ padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', color: filterStatus ? '#111' : '#999', background: '#fff', cursor: 'pointer' }}>
                 <option value="">Semua Status</option>
                 <option value="submitted">Menunggu Review</option>
@@ -309,9 +337,7 @@ export default function DashboardPage() {
                 <option value="hold">Ditahan</option>
                 <option value="rejected">Ditolak</option>
               </select>
-
-              {/* Filter divisi */}
-              <select value={filterDivisi} onChange={e => setFilterDivisi(e.target.value)}
+              <select value={filterDivisi} onChange={e => { setFilterDivisi(e.target.value); setCurrentPage(1) }}
                 style={{ padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', color: filterDivisi ? '#111' : '#999', background: '#fff', cursor: 'pointer' }}>
                 <option value="">Semua Divisi</option>
                 <option value="OPR">OPR</option>
@@ -319,17 +345,14 @@ export default function DashboardPage() {
                 <option value="PRC">PRC</option>
                 <option value="FIN">FIN</option>
               </select>
-
-              {/* Clear filter */}
               {hasFilter && (
-                <button onClick={() => { setSearch(''); setFilterStatus(''); setFilterDivisi('') }}
+                <button onClick={() => { setSearch(''); setFilterStatus(''); setFilterDivisi(''); setCurrentPage(1) }}
                   style={{ padding: '8px 12px', background: '#F5F5F5', border: 'none', borderRadius: 8, fontSize: 12, color: '#888', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                   ✕ Reset
                 </button>
               )}
             </div>
 
-            {/* Info hasil filter */}
             {hasFilter && (
               <div style={{ fontSize: 11, color: '#999', marginTop: 8 }}>
                 Menampilkan {filtered.length} dari {pengajuan.length} pengajuan
