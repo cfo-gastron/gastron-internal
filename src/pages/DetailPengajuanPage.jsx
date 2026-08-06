@@ -211,7 +211,7 @@ export default function DetailPengajuanPage() {
     // Insert ke cashflow kalau final approve (CEO)
     if (newStatus === 'approved_ceo') {
       const mapping = getCashflowCategory(pengajuan.subkategori)
-      await supabase.from('cashflow_transactions').insert({
+      const { error: cashflowError } = await supabase.from('cashflow_transactions').insert({
         name: pengajuan.judul,
         amount: Math.round(Number(pengajuan.total_pengajuan)),
         date: new Date().toISOString().split('T')[0],
@@ -227,6 +227,10 @@ export default function DetailPengajuanPage() {
         notes: `Auto dari pengajuan ${pengajuan.kode_surat}`,
         created_by: profile.id,
       })
+      if (cashflowError) {
+        console.error('Gagal insert ke cashflow:', cashflowError)
+        alert(`Pengajuan udah di-approve, TAPI gagal masuk ke Cashflow (${cashflowError.message}). Tolong masukin manual di Cashflow app.`)
+      }
     }
 
     const notifContent = getNotifContent(newStatus, pengajuan.judul, profile.full_name)
