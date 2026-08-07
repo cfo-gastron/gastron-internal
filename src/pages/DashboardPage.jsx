@@ -218,6 +218,7 @@ export default function DashboardPage() {
               { icon: '⊞', label: 'Dashboard', path: '/dashboard' },
               { icon: '+', label: 'Buat Pengajuan', path: '/pengajuan/baru' },
               ...(['cfo', 'finance', 'ceo'].includes(profile?.role) ? [{ icon: '🗂', label: 'Arsip', path: '/arsip' }] : []),
+              ...(['cfo', 'finance'].includes(profile?.role) ? [{ icon: '🔗', label: 'Sinkronisasi', path: '/mapping-kategori' }] : []),
             ].map(item => (
               <button key={item.path} onClick={() => { setActiveNav(item.path); navigate(item.path) }}
                 style={{ width: '100%', padding: '10px 12px', background: activeNav === item.path ? '#FFF0F0' : 'transparent', border: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: activeNav === item.path ? 600 : 400, color: activeNav === item.path ? '#C0272D' : '#555', cursor: 'pointer', textAlign: 'left', marginBottom: 4, fontFamily: 'inherit' }}>

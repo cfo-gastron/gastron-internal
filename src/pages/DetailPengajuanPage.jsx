@@ -28,20 +28,21 @@ const STATUS_CLASS = {
 }
 
 // Mapping subkategori pengajuan → cashflow
-const CASHFLOW_MAPPING = {
-  'Upah, Bensin, Parkir, Tol Kendaraan': { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex1', subcat_name: 'Upah, Bensin, Parkir, Tol Kendaraan' },
-  'Operasional Kandang':                 { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex2', subcat_name: 'Operasional Kandang' },
-  'Pemeliharaan Alat':                   { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex6', subcat_name: 'Pemeliharaan Alat' },
-  'Pemeliharaan Kendaraan':              { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex5', subcat_name: 'Pemeliharaan Kendaraan' },
-  'Marketing/Mobilisasi Operasional':    { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex4', subcat_name: 'Marketing/Mobilisasi Operasional' },
-  'Pembelian Alat':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex2', subcat_name: 'Pembelian Alat' },
-  'DP Truk':                             { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex1', subcat_name: 'Pembelian Aset' },
-  'Perjalanan Dinas':                    { cat_id: 'd_corp', cat_name: 'Corporate Support', subcat_id: 'd_corp4', subcat_name: 'Perjalanan Dinas' },
-  'Perlengkapan Kantor':                 { cat_id: 'd_off', cat_name: 'Office', subcat_id: 'd_off2', subcat_name: 'Perlengkapan Kantor' },
-}
-
-function getCashflowCategory(subkategori) {
-  return CASHFLOW_MAPPING[subkategori] || { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
+async function getCashflowCategory(subkategori) {
+  const fallback = { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
+  if (!subkategori) return fallback
+  const { data } = await supabase
+    .from('subkategori_pengajuan')
+    .select('cashflow_cat_id, cashflow_cat_name, cashflow_subcat_id, cashflow_subcat_name')
+    .eq('nama', subkategori)
+    .maybeSingle()
+  if (!data || !data.cashflow_cat_id) return fallback
+  return {
+    cat_id: data.cashflow_cat_id,
+    cat_name: data.cashflow_cat_name,
+    subcat_id: data.cashflow_subcat_id,
+    subcat_name: data.cashflow_subcat_name,
+  }
 }
 
 function formatRp(n) {
@@ -210,7 +211,7 @@ export default function DetailPengajuanPage() {
 
     // Insert ke cashflow kalau final approve (CEO)
     if (newStatus === 'approved_ceo') {
-      const mapping = getCashflowCategory(pengajuan.subkategori)
+      const mapping = await getCashflowCategory(pengajuan.subkategori)
       const { error: cashflowError } = await supabase.from('cashflow_transactions').insert({
         name: pengajuan.judul,
         amount: Math.round(Number(pengajuan.total_pengajuan)),

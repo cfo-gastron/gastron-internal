@@ -8,6 +8,7 @@ import DetailPengajuanPage from './pages/DetailPengajuanPage'
 import EditPengajuanPage from './pages/EditPengajuanPage'
 import LpjPage from './pages/LpjPage'
 import ArchivedPage from './pages/ArchivedPage'
+import MappingKategoriPage from './pages/MappingKategoriPage'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuth()
@@ -36,6 +37,7 @@ function AppRoutes() {
       <Route path="/pengajuan/:id/edit" element={<ProtectedRoute><EditPengajuanPage /></ProtectedRoute>} />
       <Route path="/lpj/:pengajuanId" element={<ProtectedRoute><LpjPage /></ProtectedRoute>} />
       <Route path="/arsip" element={<ProtectedRoute><ArchivedPage /></ProtectedRoute>} />
+      <Route path="/mapping-kategori" element={<ProtectedRoute><MappingKategoriPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
