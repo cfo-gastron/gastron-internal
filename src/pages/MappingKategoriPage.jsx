@@ -5,6 +5,22 @@ import { useAuth } from '../context/AuthContext'
 
 const FALLBACK = { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
 
+async function getCashflowCategory(subkategori) {
+  if (!subkategori) return FALLBACK
+  const { data } = await supabase
+    .from('subkategori_pengajuan')
+    .select('cashflow_cat_id, cashflow_cat_name, cashflow_subcat_id, cashflow_subcat_name')
+    .eq('nama', subkategori)
+    .maybeSingle()
+  if (!data || !data.cashflow_cat_id) return FALLBACK
+  return {
+    cat_id: data.cashflow_cat_id,
+    cat_name: data.cashflow_cat_name,
+    subcat_id: data.cashflow_subcat_id,
+    subcat_name: data.cashflow_subcat_name,
+  }
+}
+
 export default function MappingKategoriPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -17,11 +33,15 @@ export default function MappingKategoriPage() {
   const [manualPick, setManualPick] = useState({})
   const [saving, setSaving] = useState({})
   const [recat, setRecat] = useState({}) // nama -> { count, ids, mapping, checking, done }
+  const [missingTx, setMissingTx] = useState([])
+  const [missingLoading, setMissingLoading] = useState(true)
+  const [missingApplying, setMissingApplying] = useState({})
+  const [missingApplyingAll, setMissingApplyingAll] = useState(false)
 
   const allowed = ['cfo', 'finance'].includes(profile?.role)
 
   useEffect(() => {
-    if (allowed) loadData()
+    if (allowed) { loadData(); cariPengajuanBelumMasuk() }
     else setLoading(false)
   }, [profile])
 
@@ -143,6 +163,70 @@ export default function MappingKategoriPage() {
     }
   }
 
+  // Cari pengajuan yang statusnya udah Transferred tapi belum ada padanannya di cashflow_transactions
+  async function cariPengajuanBelumMasuk() {
+    setMissingLoading(true)
+    try {
+      const { data: pengajuanList } = await supabase
+        .from('pengajuan')
+        .select('id, judul, total_pengajuan, subkategori, kode_surat, approved_ceo_at')
+        .eq('status', 'approved_ceo')
+        .order('approved_ceo_at', { ascending: false })
+
+      const { data: linked } = await supabase
+        .from('cashflow_transactions')
+        .select('linked_id')
+        .not('linked_id', 'is', null)
+
+      const linkedIds = new Set((linked || []).map(l => l.linked_id))
+      const missing = (pengajuanList || []).filter(p => !linkedIds.has(p.id))
+      setMissingTx(missing)
+    } catch (e) {
+      console.error('Gagal cari pengajuan belum masuk:', e)
+    } finally {
+      setMissingLoading(false)
+    }
+  }
+
+  async function masukinSatuKeCashflow(p) {
+    setMissingApplying(prev => ({ ...prev, [p.id]: true }))
+    try {
+      const mapping = await getCashflowCategory(p.subkategori)
+      const { error } = await supabase.from('cashflow_transactions').insert({
+        name: p.judul,
+        amount: Math.round(Number(p.total_pengajuan)),
+        date: p.approved_ceo_at ? p.approved_ceo_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        type: 'out',
+        account: 'utama',
+        cat_id: mapping.cat_id,
+        cat_name: mapping.cat_name,
+        subcat_id: mapping.subcat_id,
+        subcat_name: mapping.subcat_name,
+        is_est: false,
+        is_kemb: false,
+        linked_id: p.id,
+        notes: `Catch-up dari pengajuan ${p.kode_surat}`,
+        created_by: profile.id,
+      })
+      if (error) throw error
+      setMissingTx(prev => prev.filter(m => m.id !== p.id))
+    } catch (e) {
+      alert(`Gagal masukin "${p.judul}": ${e.message}`)
+    } finally {
+      setMissingApplying(prev => ({ ...prev, [p.id]: false }))
+    }
+  }
+
+  async function masukinSemuaKeCashflow() {
+    if (!confirm(`Masukin ${missingTx.length} pengajuan ke Cashflow sekaligus?`)) return
+    setMissingApplyingAll(true)
+    for (const p of [...missingTx]) {
+      await masukinSatuKeCashflow(p)
+    }
+    setMissingApplyingAll(false)
+  }
+
+
   if (!allowed) {
     return (
       <div style={{ padding: 40, fontFamily: 'inherit' }}>
@@ -156,9 +240,47 @@ export default function MappingKategoriPage() {
     <div style={{ padding: 32, fontFamily: 'inherit', maxWidth: 800 }}>
       <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, cursor: 'pointer', marginBottom: 16 }}>← Kembali</button>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111', marginBottom: 4 }}>Sinkronisasi Kategori</h2>
-      <p style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>
+      <p style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
         Subkategori pengajuan di bawah ini belum ke-mapping ke kategori Cashflow. Sebelum ke-mapping, transaksi yang pakai subkategori ini otomatis masuk kategori "Operasional Tak Terduga".
       </p>
+
+      {/* PENGAJUAN YANG BELUM MASUK CASHFLOW */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Pengajuan Belum Masuk Cashflow</h3>
+          {missingTx.length > 0 && (
+            <button
+              onClick={masukinSemuaKeCashflow}
+              disabled={missingApplyingAll}
+              style={{ padding: '7px 14px', background: '#C0272D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              {missingApplyingAll ? 'Lagi masukin semua...' : `Masukin Semua (${missingTx.length})`}
+            </button>
+          )}
+        </div>
+        {missingLoading && <p style={{ fontSize: 13, color: '#888' }}>Mengecek...</p>}
+        {!missingLoading && missingTx.length === 0 && (
+          <p style={{ fontSize: 13, color: '#4CAF50' }}>✓ Semua pengajuan yang Transferred udah masuk Cashflow.</p>
+        )}
+        {missingTx.map(p => (
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #EBEBEB', borderRadius: 10, padding: '10px 14px', marginBottom: 8, background: '#fff' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{p.judul}</div>
+              <div style={{ fontSize: 11, color: '#999' }}>{p.kode_surat} · Rp {Number(p.total_pengajuan).toLocaleString('id-ID')} · {p.subkategori || '-'}</div>
+            </div>
+            <button
+              onClick={() => masukinSatuKeCashflow(p)}
+              disabled={missingApplying[p.id]}
+              style={{ padding: '6px 12px', background: '#FFF0F0', color: '#C0272D', border: '1px solid #C0272D', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+            >
+              {missingApplying[p.id] ? '...' : 'Masukin'}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111', marginBottom: 10 }}>Subkategori Belum Ke-mapping</h3>
+
 
       {loading && <p style={{ fontSize: 13, color: '#888' }}>Memuat...</p>}
       {!loading && unmapped.length === 0 && Object.keys(recat).length === 0 && (
