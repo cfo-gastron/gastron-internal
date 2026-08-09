@@ -132,14 +132,17 @@ async function handleEnableNotif() {
   }
 
   useEffect(() => {
-  if (!isPushSupported()) return
-  const status = getPushPermissionStatus()
-  if (status === 'default') {
-    setShowNotifBanner(true)
-  } else if (status === 'granted' && profile?.id) {
+  fetchPengajuan()
+  const handleResize = () => setIsMobile(window.innerWidth < 768)
+  window.addEventListener('resize', handleResize)
+
+  // Auto subscribe push notif kalau udah granted
+  if (isPushSupported() && getPushPermissionStatus() === 'granted' && profile?.id) {
     subscribeToPush(profile.id)
   }
-}, [profile?.id])
+
+  return () => window.removeEventListener('resize', handleResize)
+}, [])
 
   async function fetchPengajuan() {
     setLoading(true)
