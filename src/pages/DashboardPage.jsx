@@ -93,13 +93,23 @@ export default function DashboardPage() {
     setShowNotifBanner(status === 'default')
   }, [])
 
-  async function handleEnableNotif() {
-    if (!profile?.id) return
-    setNotifLoading(true)
-    const result = await subscribeToPush(profile.id)
-    setNotifLoading(false)
-    if (result.success || result.reason === 'permission_denied') setShowNotifBanner(false)
+async function handleEnableNotif() {
+  if (!profile?.id) return
+  setNotifLoading(true)
+  const result = await subscribeToPush(profile.id)
+  setNotifLoading(false)
+  if (result.success) {
+    setShowNotifBanner(false)
+    alert('Notif berhasil diaktifkan!')
+  } else if (result.reason === 'permission_denied') {
+    setShowNotifBanner(false)
+    alert('Permission ditolak di settings iPhone')
+  } else if (result.reason === 'not_supported') {
+    alert('Device ini tidak support push notif')
+  } else {
+    alert('Gagal: ' + (result.error?.message || result.reason || 'unknown error'))
   }
+}
 
   function handleTouchStart(e) {
     if (window.scrollY > 0) return
