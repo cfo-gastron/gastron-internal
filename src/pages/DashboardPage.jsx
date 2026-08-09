@@ -132,11 +132,14 @@ async function handleEnableNotif() {
   }
 
   useEffect(() => {
-    fetchPengajuan()
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  if (!isPushSupported()) return
+  const status = getPushPermissionStatus()
+  if (status === 'default') {
+    setShowNotifBanner(true)
+  } else if (status === 'granted' && profile?.id) {
+    subscribeToPush(profile.id)
+  }
+}, [profile?.id])
 
   async function fetchPengajuan() {
     setLoading(true)
