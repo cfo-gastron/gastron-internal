@@ -1,5 +1,17 @@
-// Service Worker untuk handle push notification
+console.log('[SW] Service worker loaded')
+
+self.addEventListener('install', () => {
+  console.log('[SW] Installed')
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', () => {
+  console.log('[SW] Activated')
+})
+
 self.addEventListener('push', function (event) {
+  console.log('[SW] Push received:', event.data?.text())
+
   if (!event.data) return
 
   let data = {}
@@ -14,20 +26,16 @@ self.addEventListener('push', function (event) {
     body: data.body || '',
     icon: '/logo-gastron.png',
     badge: '/logo-gastron.png',
-    data: {
-      url: data.url || '/dashboard',
-    },
+    data: { url: data.url || '/dashboard' },
     vibrate: [200, 100, 200],
   }
 
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
-// Klik notif → buka/fokus ke app, navigate ke url yang dikirim
 self.addEventListener('notificationclick', function (event) {
   event.notification.close()
   const url = event.notification.data?.url || '/dashboard'
-
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
       for (const client of clientList) {
@@ -36,9 +44,7 @@ self.addEventListener('notificationclick', function (event) {
           return client.focus()
         }
       }
-      if (clients.openWindow) {
-        return clients.openWindow(url)
-      }
+      if (clients.openWindow) return clients.openWindow(url)
     })
   )
 })
