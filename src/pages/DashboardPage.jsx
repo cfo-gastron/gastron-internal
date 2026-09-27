@@ -292,7 +292,7 @@ async function handleEnableNotif() {
         )}
 
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: '#111' }}>{isApprover ? 'Semua Pengajuan' : 'Pengajuan Saya'}</div>
+          <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: '#111' }}>Hi, {profile?.full_name?.split(' ')[0]} 👋</div>
           <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
 
