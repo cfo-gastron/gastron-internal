@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
+import { canApprovePengajuan } from '../lib/approval'
 
 const STATUS_LABEL = {
   draft: 'Draft',
@@ -35,7 +36,7 @@ const CASHFLOW_MAPPING = {
   'Pemeliharaan Kendaraan':              { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex5', subcat_name: 'Pemeliharaan Kendaraan' },
   'Marketing/Mobilisasi Operasional':    { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex4', subcat_name: 'Marketing/Mobilisasi Operasional' },
   'Pembelian Alat':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex2', subcat_name: 'Pembelian Alat' },
-  'DP Truk':                             { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex1', subcat_name: 'Pembelian Aset' },
+  'Pembelian Aset':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex1', subcat_name: 'Pembelian Aset' },
   'Perjalanan Dinas':                    { cat_id: 'd_corp', cat_name: 'Corporate Support', subcat_id: 'd_corp4', subcat_name: 'Perjalanan Dinas' },
   'Perlengkapan Kantor':                 { cat_id: 'd_off', cat_name: 'Office', subcat_id: 'd_off2', subcat_name: 'Perlengkapan Kantor' },
 }
@@ -138,16 +139,7 @@ export default function DetailPengajuanPage() {
 
   function canApprove() {
     if (!pengajuan) return false
-    const role = profile?.role
-    const status = pengajuan.status
-    if (status === 'submitted') {
-      if (pengajuan.division === 'OPR' && role === 'coo') return true
-      if (['ADM', 'PRC'].includes(pengajuan.division) && role === 'cao') return true
-      if (pengajuan.division === 'FIN' && role === 'cfo') return true
-    }
-    if (status === 'approved_step1' && role === 'cfo') return true
-    if (status === 'approved_cfo' && (role === 'ceo' || role === 'cfo' || role === 'finance')) return true
-    return false
+    return canApprovePengajuan(profile?.role, pengajuan.status, pengajuan.division)
   }
 
   function canAccessLpj() {
@@ -234,7 +226,7 @@ export default function DetailPengajuanPage() {
     }
 
     const notifContent = getNotifContent(newStatus, pengajuan.judul, profile.full_name)
-    notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
+    notifyPengajuanUpdate({ ...pengajuan, id }, newStatus, notifContent)
     setShowFinalApproveModal(false)
     fetchDetail()
     setActionLoading(false)
@@ -252,7 +244,7 @@ export default function DetailPengajuanPage() {
       rejection_type: rejectType, catatan: rejectReason,
     })
     const notifContent = getNotifContent(rejectType, pengajuan.judul, profile.full_name)
-    notifyPengajuanUpdate({ ...pengajuan, id }, notifContent)
+    notifyPengajuanUpdate({ ...pengajuan, id }, rejectType, notifContent)
     setShowRejectModal(false)
     setRejectReason('')
     fetchDetail()
@@ -272,6 +264,7 @@ export default function DetailPengajuanPage() {
     })
     notifyPengajuanUpdate(
       { ...pengajuan, id },
+      'submitted',
       { title: '📝 Pengajuan diajukan ulang', body: `"${pengajuan.judul}" diajukan ulang oleh ${profile.full_name}` }
     )
     setShowHoldModal(false)

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { notifyPengajuanUpdate } from '../lib/sendNotif'
 
 const SATUAN_OPTIONS = ['Pcs', 'Unit', 'Kaleng', 'Liter', 'Kg', 'Box', 'Lembar', 'Trip', 'Bulan', 'Lainnya']
 
@@ -222,6 +223,12 @@ export default function EditPengajuanPage() {
         role_at_time: profile.role,
         catatan: 'Disubmit ulang setelah revisi',
       })
+
+      notifyPengajuanUpdate(
+        { ...pengajuan, id, judul, total_pengajuan: total },
+        'submitted',
+        { title: '📝 Pengajuan diajukan ulang', body: `"${judul}" diajukan ulang oleh ${profile.full_name} setelah revisi` }
+      )
 
       navigate(`/pengajuan/${id}`)
     } catch (err) {

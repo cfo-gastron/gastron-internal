@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyLpjUpdate } from '../lib/sendNotif'
+import { canApproveLpj as canApproveLpjRule } from '../lib/approval'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -46,11 +47,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
   const role = profile?.role
   const [showCloseModal, setShowCloseModal] = useState(false)
 
-  const canApproveLpj = () => {
-    if (lpj.status === 'submitted' && (role === 'finance' || role === 'cfo')) return true
-    if (lpj.status === 'approved_finance' && role === 'cfo') return true
-    return false
-  }
+  const canApproveLpj = () => canApproveLpjRule(role, lpj.status)
 
   const canEditLpj = () => {
     if (lpj.status !== 'submitted') return false
@@ -400,7 +397,7 @@ export default function LpjPage() {
       closed: { title: '🎉 LPJ closed', body: `LPJ "${pengajuan.judul}" udah selesai diverifikasi, beres!` },
     }
     const notifContent = notifMap[newStatus]
-    if (notifContent) notifyLpjUpdate({ ...pengajuan, id: pengajuanId }, existingLpj.submitted_by, notifContent)
+    if (notifContent) notifyLpjUpdate({ ...pengajuan, id: pengajuanId }, existingLpj.submitted_by, newStatus, notifContent, existingLpj.total_realisasi)
 
     setApproving(false)
     navigate(`/pengajuan/${pengajuanId}`)
@@ -445,8 +442,9 @@ export default function LpjPage() {
       if (lpjErr) throw lpjErr
       await insertNotas(lpj.id)
       notifyLpjUpdate(
-        { ...pengajuan, id: pengajuanId }, profile.id,
-        { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` }
+        { ...pengajuan, id: pengajuanId }, profile.id, 'submitted',
+        { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` },
+        totalRealisasi
       )
       await fetchData()
     } catch (err) { setError(err.message || 'Terjadi kesalahan') }

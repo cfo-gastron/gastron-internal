@@ -39,6 +39,12 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }
 
+  // Ambil ulang profil (misalnya setelah Telegram terhubung)
+  async function refreshProfile() {
+    const currentUser = (await supabase.auth.getUser()).data.user
+    if (currentUser) await fetchProfile(currentUser.id)
+  }
+
   async function signInWithGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -71,7 +77,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signOut, saveRole }}>
+    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signOut, saveRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

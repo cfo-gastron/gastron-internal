@@ -177,6 +177,7 @@ export default function FormPengajuanPage() {
 
       notifyPengajuanUpdate(
         { ...pengajuan },
+        'submitted',
         { title: '📝 Pengajuan baru', body: `${profile.full_name} ngajuin "${judul}"` }
       )
 

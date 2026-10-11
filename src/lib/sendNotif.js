@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
+import { buildNotifs, lpjApprovers, pengajuanApprovers } from './approval'
 
-// Kirim notif ke daftar user_id tertentu
+// Kirim notif ke daftar user_id tertentu (lewat Telegram, lihat supabase/functions/send-notif).
+// User yang belum menghubungkan Telegram dilewati. User yang memicu notif tidak dikirimi.
 export async function sendNotif({ userIds, title, body, url }) {
   if (!userIds || userIds.length === 0) return
 
@@ -17,12 +19,19 @@ export async function sendNotif({ userIds, title, body, url }) {
 
 // Helper: ambil user_id berdasarkan role tertentu
 export async function getUserIdsByRole(roles) {
+  if (!roles || roles.length === 0) return []
   const { data, error } = await supabase.from('users').select('id').in('role', roles)
   if (error) { console.error(error); return [] }
   return data.map(u => u.id)
 }
 
-// Ambil semua user_id yang relevan untuk sebuah pengajuan:
+async function getFullName(userId) {
+  if (!userId) return null
+  const { data } = await supabase.from('users').select('full_name').eq('id', userId).maybeSingle()
+  return data?.full_name || null
+}
+
+// Ambil semua user_id yang relevan untuk sebuah pengajuan (dapat notif info):
 // - CFO, Finance, CEO selalu dapat notif (semua divisi)
 // - COO hanya dapat notif kalau divisinya OPR
 // - CAO hanya dapat notif kalau divisinya ADM atau PRC
@@ -42,24 +51,28 @@ export async function getRelevantUserIds(division, submittedBy) {
   return Array.from(allIds)
 }
 
-// Notif untuk perubahan status pengajuan
-export async function notifyPengajuanUpdate(pengajuan, { title, body }) {
-  const userIds = await getRelevantUserIds(pengajuan.division, pengajuan.submitted_by)
-  return sendNotif({
-    userIds,
-    title,
-    body,
-    url: `/pengajuan/${pengajuan.id}`,
-  })
+async function sendAll(notifs) {
+  return Promise.all(notifs.map(sendNotif))
 }
 
-// Notif untuk perubahan status LPJ — pakai pengajuan terkait untuk tentuin divisi & pengaju
-export async function notifyLpjUpdate(pengajuan, lpjSubmittedBy, { title, body }) {
-  const userIds = await getRelevantUserIds(pengajuan.division, lpjSubmittedBy)
-  return sendNotif({
-    userIds,
-    title,
-    body,
-    url: `/lpj/${pengajuan.id}`,
-  })
+// Notif untuk perubahan status pengajuan.
+// newStatus = status SETELAH aksi. Yang harus approve di status itu dapat "🔔 Perlu approval kamu".
+export async function notifyPengajuanUpdate(pengajuan, newStatus, info) {
+  const [relevantIds, approverIds, pengajuName] = await Promise.all([
+    getRelevantUserIds(pengajuan.division, pengajuan.submitted_by),
+    getUserIdsByRole(pengajuanApprovers(newStatus, pengajuan.division).utama),
+    getFullName(pengajuan.submitted_by),
+  ])
+  return sendAll(buildNotifs({ kind: 'pengajuan', item: pengajuan, newStatus, info, relevantIds, approverIds, pengajuName }))
+}
+
+// Notif untuk perubahan status LPJ — pakai pengajuan terkait untuk tentuin divisi & pengaju.
+export async function notifyLpjUpdate(pengajuan, lpjSubmittedBy, newStatus, info, totalRealisasi) {
+  const [relevantIds, approverIds, pengajuName] = await Promise.all([
+    getRelevantUserIds(pengajuan.division, lpjSubmittedBy),
+    getUserIdsByRole(lpjApprovers(newStatus).utama),
+    getFullName(lpjSubmittedBy),
+  ])
+  const item = { ...pengajuan, total_realisasi: totalRealisasi }
+  return sendAll(buildNotifs({ kind: 'lpj', item, newStatus, info, relevantIds, approverIds, pengajuName }))
 }

@@ -1,7 +1,7 @@
 
 [functions.send-notif]
 enabled = true
-verify_jwt = false
+verify_jwt = false  # login user dicek di dalam fungsi (lihat index.ts)
 import_map = "./functions/send-notif/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -9,3 +9,11 @@ entrypoint = "./functions/send-notif/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-notif/*.html" ]
+
+[functions.telegram-bot]
+enabled = true
+# Harus false: Telegram tidak mengirim JWT. Keamanan dicek lewat TELEGRAM_WEBHOOK_SECRET
+# dan, untuk permintaan dari app, lewat login user di dalam fungsi.
+verify_jwt = false
+import_map = "./functions/telegram-bot/deno.json"
+entrypoint = "./functions/telegram-bot/index.ts"
