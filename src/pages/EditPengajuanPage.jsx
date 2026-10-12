@@ -144,6 +144,43 @@ export default function EditPengajuanPage() {
       const sedangDitahan = pengajuan.status === 'hold'
       const statusBaru = sedangDitahan ? 'hold' : tahapTerakhir(pengajuan)
 
+      // Item & rekening disimpan AMAN: data baru masuk dulu, yang lama baru dihapus setelah semua berhasil.
+      // (Dulu: hapus dulu lalu insert tanpa cek error. Insert selalu gagal karena kolom `jumlah` dihitung
+      //  otomatis oleh database, jadi item hilang setiap kali pengajuan direvisi.)
+      const { data: itemLama, error: ilErr } = await supabase.from('pengajuan_items').select('id').eq('pengajuan_id', id)
+      if (ilErr) throw new Error(`Gagal membaca item lama (${ilErr.message})`)
+      const { data: penLama, error: plErr } = await supabase.from('pengajuan_penerima').select('id').eq('pengajuan_id', id)
+      if (plErr) throw new Error(`Gagal membaca rekening lama (${plErr.message})`)
+
+      const { data: itemBaru, error: iErr } = await supabase.from('pengajuan_items').insert(
+        items.map((item, idx) => ({
+          pengajuan_id: id,
+          urutan: idx + 1,
+          uraian: item.uraian,
+          qty: Number(item.qty),
+          satuan: item.satuan,
+          harga_satuan: Number(item.harga_satuan),
+        }))
+      ).select('id')
+      if (iErr) throw new Error(`Item gagal disimpan (${iErr.message}). Belum ada yang berubah, coba lagi.`)
+
+      const penerimaToInsert = rapikanRekening(penerima)
+      let penBaru = []
+      if (penerimaToInsert.length > 0) {
+        const { data, error: penErr } = await supabase.from('pengajuan_penerima').insert(
+          penerimaToInsert.map((r) => { const rest = { ...r }; delete rest.id; delete rest.created_at; return { ...rest, pengajuan_id: id } })
+        ).select('id')
+        if (penErr) {
+          await supabase.from('pengajuan_items').delete().in('id', (itemBaru || []).map(r => r.id))
+          throw new Error(`Rekening tujuan gagal disimpan (${penErr.message}). Belum ada yang berubah, coba lagi.`)
+        }
+        penBaru = data || []
+      }
+      const batalkanBaru = async () => {
+        await supabase.from('pengajuan_items').delete().in('id', (itemBaru || []).map(r => r.id))
+        if (penBaru.length) await supabase.from('pengajuan_penerima').delete().in('id', penBaru.map(r => r.id))
+      }
+
       // Update pengajuan — kode_surat tidak berubah
       const { data: pUpdated, error: pErr } = await supabase.from('pengajuan').update({
         judul,
@@ -157,30 +194,17 @@ export default function EditPengajuanPage() {
         ...(sedangDitahan ? {} : { rejection_reason: null, rejection_type: null }),
       }).eq('id', id).eq('status', pengajuan.status).select('id')
 
-      if (pErr) throw pErr
-      if (!pUpdated || pUpdated.length === 0) throw new Error('Pengajuan ini sudah tidak bisa diubah (statusnya berubah). Muat ulang halaman.')
+      if (pErr) { await batalkanBaru(); throw pErr }
+      if (!pUpdated || pUpdated.length === 0) { await batalkanBaru(); throw new Error('Pengajuan ini sudah tidak bisa diubah (statusnya berubah). Muat ulang halaman.') }
 
-      // Replace items: delete all lama, insert baru
-      await supabase.from('pengajuan_items').delete().eq('pengajuan_id', id)
-      await supabase.from('pengajuan_items').insert(
-        items.map((item, idx) => ({
-          pengajuan_id: id,
-          urutan: idx + 1,
-          uraian: item.uraian,
-          qty: Number(item.qty),
-          satuan: item.satuan,
-          harga_satuan: Number(item.harga_satuan),
-          jumlah: Number(item.qty) * Number(item.harga_satuan),
-        }))
-      )
-
-      // Replace penerima: delete all lama, insert baru
-      await supabase.from('pengajuan_penerima').delete().eq('pengajuan_id', id)
-      const penerimaToInsert = rapikanRekening(penerima)
-      if (penerimaToInsert.length > 0) {
-        await supabase.from('pengajuan_penerima').insert(
-          penerimaToInsert.map(({ id: _, ...rest }) => ({ ...rest, pengajuan_id: id }))
-        )
+      // Semua data baru sudah masuk, baru hapus item & rekening lama
+      if (itemLama?.length) {
+        const { error } = await supabase.from('pengajuan_items').delete().in('id', itemLama.map(r => r.id))
+        if (error) console.error('Item lama gagal dihapus:', error)
+      }
+      if (penLama?.length) {
+        const { error } = await supabase.from('pengajuan_penerima').delete().in('id', penLama.map(r => r.id))
+        if (error) console.error('Rekening lama gagal dihapus:', error)
       }
 
       // Hapus attachment yang di-remove

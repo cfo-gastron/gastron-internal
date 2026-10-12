@@ -596,6 +596,39 @@ async function bukaBatal(s) { await s.page.getByRole('button', { name: BATAL }).
   await s.ctx.close()
 }
 
+// K42. Ubah/kirim ulang pengajuan tidak menghilangkan item & rekening (bug: item hilang setiap revisi)
+{
+  const salah = []
+  for (const [role, id, tombol] of [['operational', 'P11', 'Submit Ulang'], ['procurement', 'P12', /Simpan perubahan/]]) {
+    const fx = clone(FIXTURE)
+    const awalItem = fx.pengajuan_items.filter((r) => r.pengajuan_id === id).length
+    const awalRek = fx.pengajuan_penerima.filter((r) => r.pengajuan_id === id).length
+    const s = await openApp(b, base, { role, path: `/pengajuan/${id}/edit`, fixture: fx })
+    await s.page.waitForTimeout(900)
+    await s.page.getByRole('button', { name: tombol }).click({ timeout: 3000 }).catch(() => {})
+    await s.page.waitForTimeout(1200)
+    const item = s.mock.db.pengajuan_items.filter((r) => r.pengajuan_id === id)
+    const rek = s.mock.db.pengajuan_penerima.filter((r) => r.pengajuan_id === id).length
+    const total = s.mock.db.pengajuan.find((p) => p.id === id).total_pengajuan
+    const jml = item.reduce((a, r) => a + Number(r.jumlah), 0)
+    if (item.length !== awalItem || rek !== awalRek || jml !== total) salah.push(`${id}: item ${awalItem}->${item.length}, rekening ${awalRek}->${rek}, jumlah ${jml} vs total ${total}`)
+    await s.ctx.close()
+  }
+  // Kalau simpan item gagal: data lama utuh, status tidak berubah, pesan error muncul
+  const fx = clone(FIXTURE); fx.__gagalInsert = 'pengajuan_items'
+  const awal = fx.pengajuan_items.filter((r) => r.pengajuan_id === 'P11').length
+  const s = await openApp(b, base, { role: 'operational', path: '/pengajuan/P11/edit', fixture: fx })
+  await s.page.waitForTimeout(900)
+  await s.page.getByRole('button', { name: 'Submit Ulang' }).click({ timeout: 3000 }).catch(() => {})
+  await s.page.waitForTimeout(1200)
+  const sisa = s.mock.db.pengajuan_items.filter((r) => r.pengajuan_id === 'P11').length
+  const st = s.mock.db.pengajuan.find((p) => p.id === 'P11').status
+  const pesan = await s.page.getByText(/Item gagal disimpan/).count().catch(() => 0)
+  if (sisa !== awal || st !== 'revision' || !pesan) salah.push(`gagal simpan: item ${awal}->${sisa}, status ${st}, pesan=${pesan}`)
+  await s.ctx.close()
+  t('K42 Ubah & kirim ulang: item/rekening utuh, gagal simpan tidak menghapus data', salah.length === 0, salah.join(' | '))
+}
+
 await b.close()
 const gagal = hasil.filter((h) => !h.lulus)
 hasil.forEach((h) => console.log((h.lulus ? 'LULUS ' : 'GAGAL ') + h.nama + (h.lulus || !h.detail ? '' : '  [' + h.detail.slice(0, 300) + ']')))

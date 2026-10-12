@@ -147,12 +147,19 @@ export function createMock(fixture, { me }) {
       const list = Array.isArray(body) ? body : [body]
       const isUpsert = prefer.includes('resolution=merge-duplicates')
       const conflict = (url.searchParams.get('on_conflict') || 'id').split(',')
+      // Seperti database asli: pengajuan_items.jumlah = kolom GENERATED (qty x harga_satuan), tidak boleh diisi
+      if (db.__gagalInsert === table) return json({ message: `insert ${table} gagal (tes)` }, 500)
+      if (table === 'pengajuan_items' && list.some((it) => 'jumlah' in it)) {
+        log.writes.push({ method, table, body, gagal: true })
+        return json({ code: '428C9', message: 'cannot insert a non-DEFAULT value into column "jumlah"' }, 400)
+      }
       const result = []
       for (const item of list) {
         const existing = isUpsert ? db[table].find((r) => conflict.every((c) => item[c] !== undefined && eqLoose(r[c], item[c]))) : null
         if (existing) { Object.assign(existing, item); result.push(existing) } else {
           const row = { id: newId(table), created_at: new Date().toISOString(), ...item }
           if (table === 'pengajuan') row.is_archived ??= false
+          if (table === 'pengajuan_items') row.jumlah = Number(row.qty) * Number(row.harga_satuan)
           db[table].push(row); result.push(row)
         }
       }
