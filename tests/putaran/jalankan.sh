@@ -17,7 +17,7 @@ for u in "$BASE" "$CAND"; do
 done
 
 step "1. Unit test aturan approval & notif"
-run node --test tests/approval.test.mjs tests/status.test.mjs tests/api.test.mjs tests/rekening.test.mjs
+run node --test tests/approval.test.mjs tests/status.test.mjs tests/api.test.mjs tests/rekening.test.mjs tests/roles.test.mjs
 step "2. Unit test Edge Function (butuh deno)"
 if command -v deno >/dev/null; then run deno test --allow-env supabase/functions/tests/; else echo "deno tidak ada, dilewati"; fi
 step "3. Lint (file baru wajib bersih; error lama dicatat)"

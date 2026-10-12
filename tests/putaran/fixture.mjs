@@ -5,14 +5,17 @@ export const JAM_UJI = '2026-10-11T09:00:00+07:00'
 const d = (daysAgo, h = 9) => new Date(new Date(JAM_UJI).getTime() - daysAgo * 864e5 + (h - 9) * 36e5).toISOString()
 
 const users = [
-  { id: 'U-cfo', email: 'cfo@gastronenergy.com', full_name: 'Rina Wijaya', role: 'cfo', telegram_chat_id: 111 },
+  { id: 'U-cfo', email: 'cfo@gastronenergy.com', full_name: 'Rina Wijaya', role: 'cfo', telegram_chat_id: 111, is_admin: true },
   { id: 'U-ceo', email: 'ceo@gastronenergy.com', full_name: 'Hendra Gunawan', role: 'ceo', telegram_chat_id: 222 },
   { id: 'U-coo', email: 'coo@gastronenergy.com', full_name: 'Insan Pratama', role: 'coo', telegram_chat_id: null },
   { id: 'U-cao', email: 'cao@gastronenergy.com', full_name: 'Dewi Lestari', role: 'cao', telegram_chat_id: null },
   { id: 'U-fin', email: 'finance@gastronenergy.com', full_name: 'Maya Sari', role: 'finance', telegram_chat_id: null },
   { id: 'U-opr', email: 'opr@gastronenergy.com', full_name: 'Budi Santoso', role: 'operational', telegram_chat_id: null },
   { id: 'U-prc', email: 'prc@gastronenergy.com', full_name: 'Fajar Nugroho', role: 'procurement', telegram_chat_id: null },
+  // Akun baru login Google, belum diberi role oleh admin
+  { id: 'U-baru', email: 'baru@gastronenergy.com', full_name: 'Sinta Anggraini', role: null, telegram_chat_id: null },
 ]
+users.forEach((u) => { u.is_admin ??= false })
 
 // [id, kode, judul, divisi, status, pengaju, hariLalu, total, subkategori, tipe, extra]
 const P = [
@@ -125,5 +128,5 @@ const __authUsers = Object.fromEntries(users.map((u) => [u.id, { id: u.id, aud: 
 export const FIXTURE = {
   users, pengajuan, pengajuan_items, pengajuan_penerima, pengajuan_attachments, approval_logs,
   lpj, lpj_nota, lpj_nota_items, subkategori_pengajuan, cashflow_categories, cashflow_transactions,
-  cashflow_activity_log: [], telegram_link_tokens: [], push_subscriptions: [], __authUsers,
+  cashflow_activity_log: [], role_change_log: [], telegram_link_tokens: [], push_subscriptions: [], __authUsers,
 }

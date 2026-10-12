@@ -30,12 +30,15 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function fetchProfile(userId) {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    setProfile(data)
+    const { data, error } = await supabase.from('users').select('*').eq('id', userId).maybeSingle()
+    if (data || error) { setProfile(data || null); setLoading(false); return }
+    // Baris profil belum ada (biasanya dibuat otomatis oleh database saat login pertama).
+    // Dibuat tanpa role: role hanya bisa diatur admin di Pengaturan → Pengguna.
+    const u = (await supabase.auth.getUser()).data.user
+    const { data: baru } = await supabase.from('users')
+      .insert({ id: userId, email: u?.email, full_name: u?.user_metadata?.full_name, avatar_url: u?.user_metadata?.avatar_url })
+      .select().maybeSingle()
+    setProfile(baru || { id: userId, email: u?.email, full_name: u?.user_metadata?.full_name, role: null })
     setLoading(false)
   }
 
@@ -57,27 +60,8 @@ export function AuthProvider({ children }) {
     setProfile(null)
   }
 
-  async function saveRole(role) {
-    const currentUser = (await supabase.auth.getUser()).data.user
-    if (!currentUser) return { error: 'No user' }
-
-    const { data, error } = await supabase
-      .from('users')
-      .upsert({
-        id: currentUser.id,
-        email: currentUser.email,
-        full_name: currentUser.user_metadata?.full_name,
-        avatar_url: currentUser.user_metadata?.avatar_url,
-        role
-      })
-      .select()
-      .single()
-    if (!error) setProfile(data)
-    return { data, error }
-  }
-
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signOut, saveRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin: profile?.is_admin === true, loading, signInWithGoogle, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

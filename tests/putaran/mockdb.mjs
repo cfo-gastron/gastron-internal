@@ -148,6 +148,7 @@ export function createMock(fixture, { me }) {
       const isUpsert = prefer.includes('resolution=merge-duplicates')
       const conflict = (url.searchParams.get('on_conflict') || 'id').split(',')
       // Seperti database asli: pengajuan_items.jumlah = kolom GENERATED (qty x harga_satuan), tidak boleh diisi
+      if (table === 'users' && !db.users.find((u) => u.id === me)?.is_admin) list.forEach((it) => { it.role = null; it.is_admin = false })
       if (db.__gagalInsert === table) return json({ message: `insert ${table} gagal (tes)` }, 500)
       if (table === 'pengajuan_items' && list.some((it) => 'jumlah' in it)) {
         log.writes.push({ method, table, body, gagal: true })
@@ -168,7 +169,22 @@ export function createMock(fixture, { me }) {
     }
     if (method === 'PATCH') {
       const body = req.postDataJSON()
-      const rows = filterRows(db[table], params)
+      let rows = filterRows(db[table], params)
+      // Seperti database asli (RLS + trigger users_guard): non-admin hanya boleh update barisnya sendiri,
+      // dan role / is_admin hanya boleh diubah admin; admin terakhir tidak bisa dicabut.
+      if (table === 'users') {
+        const admin = !!db.users.find((u) => u.id === me)?.is_admin
+        if (!admin) rows = rows.filter((r) => r.id === me)
+        for (const r of rows) {
+          const gantiRole = 'role' in body && body.role !== r.role
+          const gantiAdmin = 'is_admin' in body && body.is_admin !== r.is_admin
+          if (!gantiRole && !gantiAdmin) continue
+          if (!admin) return json({ code: '42501', message: 'Hanya admin yang bisa mengubah role' }, 403)
+          if (r.is_admin && body.is_admin === false && db.users.filter((u) => u.is_admin).length <= 1) return json({ code: 'P0001', message: 'Minimal harus ada satu admin' }, 400)
+          db.role_change_log ??= []
+          db.role_change_log.push({ id: db.role_change_log.length + 1, user_id: r.id, changed_by: me, old_role: r.role, new_role: 'role' in body ? body.role : r.role, old_admin: r.is_admin, new_admin: 'is_admin' in body ? body.is_admin : r.is_admin, changed_at: new Date().toISOString() })
+        }
+      }
       rows.forEach((r) => Object.assign(r, body))
       log.writes.push({ method, table, body, count: rows.length })
       return prefer.includes('return=representation') ? respond(rows) : json(undefined, 204)

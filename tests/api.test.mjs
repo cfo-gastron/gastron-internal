@@ -14,10 +14,12 @@ function fakeRes() {
   r.json = (b) => { r.body = b; return r }
   return r
 }
+let roleUji = 'cfo'
 const req = (body, token = 'USERTOKEN') => ({ method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {}, body })
 
 beforeEach(() => {
   calls = []
+  roleUji = 'cfo'
   aiText = '{"subkategori":"Pemeliharaan Kendaraan","alasan":"ganti ban"}'
   process.env.ANTHROPIC_API_KEY = 'sk-test'
   globalThis.fetch = async (url, opts = {}) => {
@@ -26,6 +28,7 @@ beforeEach(() => {
     if (String(url).endsWith('/auth/v1/user')) {
       return opts.headers.Authorization === 'Bearer USERTOKEN' ? ok({ id: 'U1' }) : { ok: false, status: 401, json: async () => ({}) }
     }
+    if (String(url).includes('/rest/v1/users')) return ok([{ role: roleUji }])
     if (String(url).includes('/rest/v1/subkategori_pengajuan')) return ok(DAFTAR.map((nama) => ({ nama })))
     if (String(url).includes('api.anthropic.com')) return ok({ content: [{ text: aiText }] })
     throw new Error('fetch tak terduga ' + url)
@@ -86,4 +89,14 @@ test('api/claude: tanpa login -> 401 (dulu terbuka untuk siapa saja)', async () 
   const res2 = fakeRes()
   await claude(req({ model: 'x', messages: [] }), res2)
   assert.equal(res2.statusCode, 200)
+})
+
+test('api/claude: hanya role CFO / Finance (role dari database), lainnya 403 tanpa memanggil AI', async () => {
+  for (const [role, kode] of [['cfo', 200], ['finance', 200], ['ceo', 403], ['operational', 403], [null, 403]]) {
+    roleUji = role; calls = []
+    const res = fakeRes()
+    await claude(req({ model: 'x', messages: [] }), res)
+    assert.equal(res.statusCode, kode, String(role))
+    if (kode === 403) assert.ok(!calls.some((c) => c.url.includes('anthropic')))
+  }
 })

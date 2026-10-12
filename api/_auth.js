@@ -24,3 +24,19 @@ export async function getUser(req) {
     return null
   }
 }
+
+// Role user dari tabel users (dibaca dengan token user sendiri, jadi ikut RLS).
+// Role hanya bisa diubah admin (trigger users_guard), jadi aman dipakai untuk izin di server.
+export async function getRole(req, user) {
+  if (!user?.id) return null
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${encodeURIComponent(user.id)}&select=role`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${bearer(req)}` },
+    })
+    if (!res.ok) return null
+    const rows = await res.json()
+    return rows?.[0]?.role || null
+  } catch {
+    return null
+  }
+}

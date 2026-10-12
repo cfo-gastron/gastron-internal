@@ -694,6 +694,107 @@ async function bukaBatal(s) { await s.page.getByRole('button', { name: BATAL }).
   t('K45 LPJ: approve dobel dicegah, Edit LPJ gagal tidak menghapus nota lama', salah.length === 0, salah.join(' | '))
 }
 
+// ---------------- Putaran 6: role hanya diatur admin (brief Corsec) ----------------
+// K46. Akun tanpa role -> layar "Menunggu akses"; /select-role & halaman lain dialihkan; tanpa pilihan role
+{
+  const salah = []
+  for (const path of ['/dashboard', '/select-role', '/pengajuan/baru']) {
+    const s = await openApp(b, base, { role: 'baru', path })
+    await s.page.waitForTimeout(800)
+    const url = new URL(s.page.url()).pathname
+    const layar = await s.page.getByTestId('menunggu-akses').count().catch(() => 0)
+    const pilihRole = await s.page.getByText(/Pilih role/).count().catch(() => 0)
+    if (url !== '/menunggu-akses' || !layar || pilihRole) salah.push(`${path} -> ${url} layar=${layar} pilihRole=${pilihRole}`)
+    await s.ctx.close()
+  }
+  const s = await openApp(b, base, { role: 'operational', path: '/menunggu-akses' })
+  await s.page.waitForTimeout(800)
+  if (new URL(s.page.url()).pathname !== '/dashboard') salah.push('user ber-role masih bisa buka /menunggu-akses')
+  await s.ctx.close()
+  t('K46 Tanpa role -> Menunggu akses; /select-role sudah tidak ada', salah.length === 0, salah.join(' | '))
+}
+
+// K47. Menu & halaman Pengaturan hanya untuk admin (CFO lain / role lain tidak)
+{
+  const salah = []
+  for (const [role, harusAdmin] of [['cfo', true], ['finance', false], ['ceo', false], ['operational', false]]) {
+    const s = await openApp(b, base, { role, path: '/dashboard' })
+    await s.page.waitForTimeout(700)
+    const menu = await s.page.getByRole('button', { name: /Pengaturan/ }).count().catch(() => 0)
+    await s.page.goto(`${base}/pengaturan/pengguna`); await s.page.waitForTimeout(800)
+    const url = new URL(s.page.url()).pathname
+    if (harusAdmin ? (!menu || url !== '/pengaturan/pengguna') : (menu || url !== '/dashboard')) salah.push(`${role}: menu=${menu} url=${url}`)
+    await s.ctx.close()
+  }
+  t('K47 Pengaturan → Pengguna hanya untuk admin', salah.length === 0, salah.join(' | '))
+}
+
+// K48. Admin ubah role: konfirmasi dulu, tersimpan, tercatat di riwayat; Batal tidak menyimpan; badge Menunggu role
+{
+  const salah = []
+  const s = await openApp(b, base, { role: 'cfo', path: '/pengaturan/pengguna' })
+  await s.page.waitForTimeout(800)
+  const badge = await s.page.getByTestId('badge-menunggu').innerText().catch(() => '')
+  if (!/Menunggu role \(1\)/.test(badge)) salah.push(`badge="${badge}"`)
+  const baris = s.page.getByTestId('user-U-prc')
+  await baris.locator('select').selectOption('finance').catch(() => {})
+  const konf = await s.page.getByTestId('konfirmasi-ubah').innerText().catch(() => '')
+  if (!/Ubah role Fajar Nugroho dari Procurement ke Finance/.test(konf)) salah.push(`konfirmasi="${konf}"`)
+  if (s.mock.db.users.find((u) => u.id === 'U-prc').role !== 'procurement') salah.push('tersimpan sebelum konfirmasi')
+  await s.page.getByRole('button', { name: 'Batal' }).click().catch(() => {})
+  if (s.mock.db.users.find((u) => u.id === 'U-prc').role !== 'procurement') salah.push('Batal ikut menyimpan')
+  await baris.locator('select').selectOption('finance').catch(() => {})
+  await s.page.getByRole('button', { name: 'Ya, ubah' }).click().catch(() => {})
+  await s.page.waitForTimeout(900)
+  const role = s.mock.db.users.find((u) => u.id === 'U-prc').role
+  const log = s.mock.db.role_change_log.at(-1)
+  const pesan = await s.page.getByTestId('pesan-pengguna').innerText().catch(() => '')
+  await s.page.getByText(/Riwayat perubahan role/).click().catch(() => {})
+  const riwayat = await s.page.locator('details').innerText().catch(() => '')
+  if (role !== 'finance' || log?.new_role !== 'finance' || !/sekarang Finance/.test(pesan) || !/Procurement → Finance/.test(riwayat)) salah.push(`role=${role} log=${JSON.stringify(log)} pesan="${pesan}" riwayat="${riwayat.slice(0, 120)}"`)
+  await s.ctx.close()
+  t('K48 Admin ubah role: konfirmasi, tersimpan, tercatat; Batal tidak menyimpan', salah.length === 0, salah.join(' | '))
+}
+
+// K49. Admin satu-satunya tidak bisa mencabut adminnya sendiri; menjadikan admin lain lalu cabut -> bisa
+{
+  const salah = []
+  const s = await openApp(b, base, { role: 'cfo', path: '/pengaturan/pengguna' })
+  await s.page.waitForTimeout(800)
+  const cabut = s.page.getByTestId('user-U-cfo').getByRole('button', { name: 'Cabut admin' })
+  if (!(await cabut.isDisabled().catch(() => false))) salah.push('tombol cabut admin sendiri tidak dikunci')
+  await s.page.getByTestId('user-U-fin').getByRole('button', { name: 'Jadikan admin' }).click().catch(() => {})
+  await s.page.getByRole('button', { name: 'Ya, ubah' }).click().catch(() => {})
+  await s.page.waitForTimeout(900)
+  if (!s.mock.db.users.find((u) => u.id === 'U-fin').is_admin) salah.push('gagal menjadikan Finance admin')
+  if (await cabut.isDisabled().catch(() => true)) salah.push('setelah ada admin lain, cabut masih dikunci')
+  await s.ctx.close()
+  t('K49 Admin terakhir tidak bisa dicabut; dengan admin lain bisa', salah.length === 0, salah.join(' | '))
+}
+
+// K50. Ditolak server (admin dicabut dari tempat lain): pesan jelas, pilihan kembali, data tetap
+//      - ubah role orang lain -> RLS: 0 baris -> "tidak punya izin"
+//      - ubah role sendiri -> trigger: pesan dari database "Hanya admin..."
+{
+  const salah = []
+  const s = await openApp(b, base, { role: 'cfo', path: '/pengaturan/pengguna' })
+  await s.page.waitForTimeout(800)
+  s.mock.db.users.find((u) => u.id === 'U-cfo').is_admin = false
+  s.mock.db.users.find((u) => u.id === 'U-fin').is_admin = true
+  for (const [id, awal, ke, pola] of [['U-opr', 'operational', 'ceo', /tidak punya izin/], ['U-cfo', 'cfo', 'ceo', /Hanya admin/]]) {
+    const sel = s.page.getByTestId(`user-${id}`).locator('select')
+    await sel.selectOption(ke).catch(() => {})
+    await s.page.getByRole('button', { name: 'Ya, ubah' }).click().catch(() => {})
+    await s.page.waitForTimeout(900)
+    const pesan = await s.page.getByTestId('pesan-pengguna').innerText().catch(() => '')
+    const nilai = await sel.inputValue().catch(() => '')
+    const role = s.mock.db.users.find((u) => u.id === id).role
+    if (!pola.test(pesan) || nilai !== awal || role !== awal) salah.push(`${id}: pesan="${pesan}" nilai=${nilai} role=${role}`)
+  }
+  await s.ctx.close()
+  t('K50 Ditolak server: pesan jelas, pilihan kembali, data tetap', salah.length === 0, salah.join(' | '))
+}
+
 await b.close()
 const gagal = hasil.filter((h) => !h.lulus)
 hasil.forEach((h) => console.log((h.lulus ? 'LULUS ' : 'GAGAL ') + h.nama + (h.lulus || !h.detail ? '' : '  [' + h.detail.slice(0, 300) + ']')))

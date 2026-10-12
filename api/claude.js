@@ -1,6 +1,9 @@
 // api/claude.js — Proxy ke Anthropic API. API key disimpan aman di server (env var).
 // Wajib login (dulu terbuka: siapa pun yang tahu URL bisa memakai API key).
-import { getUser } from './_auth.js'
+import { getRole, getUser } from './_auth.js'
+
+// Saran kategori AI dipakai halaman Sinkronisasi (CFO & Finance)
+const ROLE_BOLEH = ['cfo', 'finance']
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -9,6 +12,7 @@ export default async function handler(req, res) {
 
   const user = await getUser(req)
   if (!user) return res.status(401).json({ error: 'Harus login' })
+  if (!ROLE_BOLEH.includes(await getRole(req, user))) return res.status(403).json({ error: 'Hanya CFO atau Finance' })
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {

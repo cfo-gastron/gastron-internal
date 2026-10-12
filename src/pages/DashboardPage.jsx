@@ -6,6 +6,7 @@ import TelegramBanner from '../components/TelegramBanner'
 import PerluApproval from '../components/PerluApproval'
 import { STATUS_LABEL, STATUS_CLASS, STATUS_GROUPS, matchStatusFilter } from '../lib/status'
 import BrandMark from '../components/BrandMark'
+import { labelRole } from '../lib/roles'
 
 const NO_LPJ_TYPES = (p) => p.tipe === 'reimbursement' || p.subkategori === 'Trip Operasional'
 
@@ -40,7 +41,7 @@ function LpjBadge({ lpjStatus, onClick }) {
 }
 
 export default function DashboardPage() {
-  const { profile, signOut } = useAuth()
+  const { profile, isAdmin, signOut } = useAuth()
   const isApprover = ['cfo', 'ceo', 'cao', 'coo', 'finance'].includes(profile?.role)
   const navigate = useNavigate()
 
@@ -178,6 +179,7 @@ export default function DashboardPage() {
               { icon: '+', label: 'Buat Pengajuan', path: '/pengajuan/baru' },
               ...(['cfo', 'finance', 'ceo'].includes(profile?.role) ? [{ icon: '🗂', label: 'Arsip', path: '/arsip' }] : []),
               ...(['cfo', 'finance'].includes(profile?.role) ? [{ icon: '🔗', label: 'Sinkronisasi', path: '/mapping-kategori' }] : []),
+              ...(isAdmin ? [{ icon: '⚙', label: 'Pengaturan', path: '/pengaturan/pengguna' }] : []),
             ].map(item => (
               <button key={item.path} onClick={() => { setActiveNav(item.path); navigate(item.path) }}
                 style={{ width: '100%', padding: '10px 12px', background: activeNav === item.path ? '#FFF0F0' : 'transparent', border: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: activeNav === item.path ? 600 : 400, color: activeNav === item.path ? '#C0272D' : '#555', cursor: 'pointer', textAlign: 'left', marginBottom: 4, fontFamily: 'inherit' }}>
@@ -190,7 +192,7 @@ export default function DashboardPage() {
               <img src={profile?.avatar_url || ''} alt="" style={{ width: 32, height: 32, borderRadius: '50%', background: '#F0F0F0' }} onError={e => { e.target.style.display = 'none' }} />
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#111' }}>{profile?.full_name}</div>
-                <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 }}>{profile?.role?.replace('_', ' ')}</div>
+                <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 }}>{labelRole(profile?.role)}</div>
               </div>
             </div>
             <button onClick={() => setShowLogoutModal(true)} style={{ width: '100%', padding: '8px', background: '#F5F5F5', border: 'none', borderRadius: 8, fontSize: 12, color: '#888', cursor: 'pointer', fontFamily: 'inherit' }}>Keluar</button>

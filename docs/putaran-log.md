@@ -226,3 +226,11 @@ Data live (12 Okt): 4 pengajuan bertotal tapi tanpa item — GTR-OPR-142 (Menung
 | F12 | Kode surat terpakai walau pengajuan dibatalkan (nomor loncat) | 1 | Diterima |
 
 Check: khusus 45/45, unit 45/45, klik desktop 109 / 0 error.
+
+## Putaran 6 — Role hanya diatur admin (brief Corsec, 12 Okt 2026)
+
+- **Plan:** brief "Pengaturan Role oleh CFO", temuan 1 (sev 4): siapa pun yang login bisa memilih role CEO/CFO sendiri.
+- **Do:** migrasi `supabase/migrations/20261012000000_role_admin.sql` (is_admin, trigger users_guard, role_change_log, profil otomatis, RLS users); hapus Pilih Role → layar Menunggu akses; Pengaturan → Pengguna (admin): ubah role dengan konfirmasi, jadikan/cabut admin (admin terakhir dikunci), badge Menunggu role, riwayat; `src/lib/roles.js` satu sumber daftar role. Sekalian tindak lanjut 2: `api/claude.js` hanya CFO/Finance (role dibaca dari database).
+- **Check:** khusus 50/50 (K46–K50 baru; mock meniru RLS + trigger), unit 56/56, klik 123 desktop / 111 HP 0 error, 38 screenshot bersih.
+- **Act / tindak lanjut brief:** (1) jaga perubahan status pengajuan & LPJ di server (RLS/trigger) — putaran berikut; (3) dump skema lengkap ke repo; (4) `.env` keluar dari Git hanya setelah VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY dipastikan ada di Vercel Environment Variables (kalau tidak, build Vercel rusak); (5) cek send-notif.
+- Menu Pengaturan hanya di sidebar desktop (sama seperti Arsip & Sinkronisasi); navigasi HP masuk backlog "nav bersama".

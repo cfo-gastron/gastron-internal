@@ -6,7 +6,7 @@ import { createMock } from './mockdb.mjs'
 
 export const REF = 'vybfhlpmtsdtegbrdsvo'
 export const VIEWPORTS = { desktop: { width: 1366, height: 860 }, mobile: { width: 390, height: 844 } }
-export const ROLE_USER = { cfo: 'U-cfo', ceo: 'U-ceo', coo: 'U-coo', cao: 'U-cao', finance: 'U-fin', operational: 'U-opr', procurement: 'U-prc' }
+export const ROLE_USER = { cfo: 'U-cfo', ceo: 'U-ceo', coo: 'U-coo', cao: 'U-cao', finance: 'U-fin', operational: 'U-opr', procurement: 'U-prc', baru: 'U-baru' }
 
 // Halaman yang dicek: [nama, path, role yang membuka]
 export const PAGES = [
@@ -27,6 +27,8 @@ export const PAGES = [
   ['lpj-closed', '/lpj/P14', 'cfo'],
   ['arsip', '/arsip', 'cfo'],
   ['mapping-kategori', '/mapping-kategori', 'cfo'],
+  ['pengaturan-pengguna', '/pengaturan/pengguna', 'cfo'],
+  ['menunggu-akses', '/menunggu-akses', 'baru'],
 ]
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
