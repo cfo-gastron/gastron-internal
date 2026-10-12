@@ -128,21 +128,18 @@ const clone = (x) => JSON.parse(JSON.stringify(x))
 const JUDUL = '#judul-pengajuan, input[placeholder^="Tulis konteks"], input[placeholder^="Contoh: Kebutuhan"]'
 
 // ---------------- Putaran 1 ----------------
-// K12. Dashboard "Perlu approval kamu" = giliran role itu (sama dengan penerima notif)
+// K12. (Diubah 13 Okt, keputusan CFO) Dashboard TIDAK punya daftar "Perlu approval kamu";
+//      yang menunggu dilihat lewat kartu "Menunggu ACC". Notif Telegram tetap.
 {
-  const harap = { cfo: ['Ganti ban truk', 'Perpanjangan izin niaga', 'Langganan software', 'LPJ · Ban serep'], coo: ['Bensin & tol'], cao: ['Servis kompresor'], ceo: ['DP truk CNG'], finance: ['LPJ · Beli regulator'] }
   const salah = []
-  for (const [role, judul] of Object.entries(harap)) {
+  for (const role of ['cfo', 'ceo', 'coo', 'finance', 'operational']) {
     const s = await openApp(b, base, { role, path: '/dashboard' })
-    const rows = await s.page.locator('[data-testid="perlu-approval"] button').allInnerTexts().catch(() => [])
-    const ok = rows.length === judul.length && judul.every((j) => rows.some((r) => r.includes(j)))
-    if (!ok) salah.push(`${role}: ${JSON.stringify(rows.map((r) => r.split('\n')[0]))}`)
+    await s.page.waitForTimeout(600)
+    const ada = await s.page.getByText('Perlu approval kamu').count().catch(() => 0)
+    if (ada) salah.push(role)
     await s.ctx.close()
   }
-  const sp = await openApp(b, base, { role: 'operational', path: '/dashboard' })
-  const adaUntukPengaju = await sp.page.locator('[data-testid="perlu-approval"]').count()
-  await sp.ctx.close()
-  t('K12 Dashboard "Perlu approval kamu" sesuai giliran tiap role (5 role + pengaju)', salah.length === 0 && adaUntukPengaju === 0, salah.join(' | ') + ` pengaju=${adaUntukPengaju}`)
+  t('K12 Dashboard tanpa daftar "Perlu approval kamu"', salah.length === 0, salah.join(', '))
 }
 
 // K13. Klik kartu angka -> jumlah baris di daftar = angka di kartu (dulu "Menunggu ACC" 6 tapi daftar 3)

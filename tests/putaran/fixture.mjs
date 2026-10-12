@@ -22,7 +22,7 @@ const P = [
   ['P01', 'GTR-OPR-021-X-2026', 'Bensin & tol trip Subang', 'OPR', 'submitted', 'U-opr', 0.2, 850000, 'Upah, Bensin, Parkir, Tol Kendaraan', 'kebutuhan'],
   ['P02', 'GTR-PRC-008-X-2026', 'Servis kompresor GTM 2', 'PRC', 'submitted', 'U-prc', 4, 4750000, 'Pemeliharaan Alat', 'kebutuhan'],
   ['P03', 'GTR-OPR-019-X-2026', 'Ganti ban truk B 9123 KZ', 'OPR', 'approved_step1', 'U-opr', 2, 6200000, 'Pemeliharaan Kendaraan', 'kebutuhan'],
-  ['P04', 'GTR-ADM-005-X-2026', 'Perpanjangan izin niaga', 'ADM', 'approved_step1', 'U-cao', 6, 12500000, 'Perjalanan Dinas', 'kebutuhan'],
+  ['P04', 'GTR-ADM-005-X-2026', 'Perpanjangan izin niaga & retur gas LPG 50kg dari ASPM-Tamansari-Subang-Karawang-Purwakarta (uji judul panjang)', 'ADM', 'approved_step1', 'U-cao', 6, 12500000, 'Perjalanan Dinas', 'kebutuhan'],
   ['P05', 'GTR-FIN-003-X-2026', 'Langganan software akuntansi', 'FIN', 'submitted', 'U-fin', 1, 3300000, 'Perlengkapan Kantor', 'kebutuhan'],
   ['P06', 'GTR-OPR-017-X-2026', 'DP truk CNG unit 3', 'OPR', 'approved_cfo', 'U-opr', 3, 185000000, 'Pembelian Aset', 'kebutuhan'],
   ['P07', 'GTR-OPR-015-IX-2026', 'Operasional kandang Majalengka', 'OPR', 'approved_ceo', 'U-opr', 12, 2400000, 'Operasional Kandang', 'kebutuhan'],

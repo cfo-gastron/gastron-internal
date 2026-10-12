@@ -4,7 +4,15 @@
   padding: 0;
 }
 
+/* Layar HP tidak boleh bisa digeser kanan-kiri: isi yang kelebaran dipotong, bukan melebarkan halaman.
+   Penyebab aslinya tetap dibetulkan per halaman (dicek tests/putaran/lebar.mjs). */
+html, body, #root {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 body {
+  overflow-wrap: anywhere;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #F8F8F8;
   color: #111;

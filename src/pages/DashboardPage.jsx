@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import TelegramBanner from '../components/TelegramBanner'
-import PerluApproval from '../components/PerluApproval'
 import { STATUS_LABEL, STATUS_CLASS, STATUS_GROUPS, matchStatusFilter } from '../lib/status'
 import BrandMark from '../components/BrandMark'
 import { labelRole } from '../lib/roles'
@@ -202,7 +201,7 @@ export default function DashboardPage() {
 
       {/* MAIN */}
       <div onTouchStart={isMobile ? handleTouchStart : undefined} onTouchMove={isMobile ? handleTouchMove : undefined} onTouchEnd={isMobile ? handleTouchEnd : undefined}
-        style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '20px 16px 90px' : '32px', minHeight: '100vh' }}>
+        style={{ flex: 1, minWidth: 0, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '20px 16px 90px' : '32px', minHeight: '100vh' }}>
 
         {isMobile && (pullDistance > 0 || refreshing) && (
           <div style={{ textAlign: 'center', padding: '8px 0', marginTop: -16, marginBottom: 8, fontSize: 12, color: pullDistance >= 70 || refreshing ? '#C0272D' : '#999' }}>
@@ -221,7 +220,6 @@ export default function DashboardPage() {
           <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
 
-        {isApprover && !loading && <PerluApproval role={profile?.role} pengajuan={pengajuan} lpjMap={lpjMap} isMobile={isMobile} />}
 
         {/* Stats — clickable */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>

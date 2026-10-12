@@ -234,3 +234,11 @@ Check: khusus 45/45, unit 45/45, klik desktop 109 / 0 error.
 - **Check:** khusus 50/50 (K46–K50 baru; mock meniru RLS + trigger), unit 56/56, klik 123 desktop / 111 HP 0 error, 38 screenshot bersih.
 - **Act / tindak lanjut brief:** (1) jaga perubahan status pengajuan & LPJ di server (RLS/trigger) — putaran berikut; (3) dump skema lengkap ke repo; (4) `.env` keluar dari Git hanya setelah VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY dipastikan ada di Vercel Environment Variables (kalau tidak, build Vercel rusak); (5) cek send-notif.
 - Menu Pengaturan hanya di sidebar desktop (sama seperti Arsip & Sinkronisasi); navigasi HP masuk backlog "nav bersama".
+
+### Putaran 6b — Dashboard & layar HP (13 Okt 2026)
+
+- **Keputusan CFO:** daftar "Perlu approval kamu" di Dashboard dihapus; yang menunggu dilihat lewat kartu "Menunggu ACC". Notif Telegram tetap. K12 diubah.
+- **Bug (sev 3, dilaporkan dari HP):** layar Dashboard bisa digeser kanan-kiri. Penyebab: kolom utama (flex) tanpa `min-width: 0`, jadi judul panjang melebarkan halaman sampai 930px. Fix: `minWidth: 0` di kolom utama Dashboard/Detail/LPJ, kata panjang boleh dipotong (`overflow-wrap: anywhere`), pengaman `overflow-x: clip` di html/body.
+- **Tes baru:** `tests/putaran/lebar.mjs` (langkah 8 di jalankan.sh) cek semua halaman di 320/360/390px dengan pengaman CSS dimatikan; fixture P04 diberi judul sangat panjang. Live: Dashboard 930px (gagal), kandidat: semua pas.
+- **Subkategori "Belum bisa dideteksi":** dicek langsung di live: server membalas `ANTHROPIC_API_KEY belum di-set di Vercel`. Bukan bug kode; owner mengisi env var di Vercel (Production) lalu redeploy.
+- Check: khusus 50/50, unit 49/49, klik 119/107 0 error, 38 screenshot bersih.

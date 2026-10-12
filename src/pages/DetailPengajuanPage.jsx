@@ -425,7 +425,7 @@ export default function DetailPengajuanPage() {
         </div>
       )}
 
-      <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 280px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+      <div style={{ flex: 1, minWidth: 0, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 280px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
 
         {isMobile ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>

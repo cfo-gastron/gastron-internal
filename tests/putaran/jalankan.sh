@@ -30,5 +30,7 @@ step "6. Klik semua tombol"
 for vp in desktop mobile; do run bash -o pipefail -c "node tests/putaran/clicks.mjs '$CAND' $vp '$OUT/klik-$vp.json' | tee '$OUT/klik-$vp.txt'"; done
 step "7. Screenshot desktop & HP"
 run bash -o pipefail -c "node tests/putaran/shots.mjs '$CAND' '$OUT/layar' | tee '$OUT/layar.txt'"
+step "8. Layar HP tidak bisa digeser kanan-kiri (320/360/390px)"
+run bash -o pipefail -c "node tests/putaran/lebar.mjs '$CAND' | tee '$OUT/lebar.txt'"
 echo; echo "=== HASIL: $ok lulus, $fail gagal  (angka berubah & tombol tanpa efek wajib dijelaskan di log putaran)"
 exit $fail

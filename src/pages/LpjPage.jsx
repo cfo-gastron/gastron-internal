@@ -60,7 +60,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
   const statusBg = { submitted: '#FFF8E1', approved_finance: '#E3F2FD', closed: '#E8F5E9' }
 
   return (
-    <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 100px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
+    <div style={{ flex: 1, minWidth: 0, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 100px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
       {isMobile ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <button onClick={onBack} aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
@@ -542,7 +542,7 @@ export default function LpjPage() {
   const inputStyle = { padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
 
   const renderForm = (isEditMode = false) => (
-    <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 900 }}>
+    <div style={{ flex: 1, minWidth: 0, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 120px' : '32px', maxWidth: isMobile ? '100%' : 900 }}>
 
       {isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
