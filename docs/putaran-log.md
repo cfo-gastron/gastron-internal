@@ -197,3 +197,11 @@ Sudah ditransfer (bukan Transferred) · Setujui/Disetujui (Approve, ACC, di-acc)
 - 11 Okt: notifikasi lewat Telegram (bot BotFather), bukan web push. Pemicu notif tidak memberi tahu dirinya sendiri.
 - 11 Okt: "Perlu approval kamu" = role **utama** tahap itu saja; cadangan (CFO/Finance di tahap CEO, CFO di LPJ baru) dapat info, bukan tugas.
 - 11 Okt: aturan siapa approve/ubah/akses LPJ hanya di `src/lib/approval.js`; label & kelompok status hanya di `src/lib/status.js`; jalur ke cashflow hanya `src/lib/cashflow.js`.
+
+## Putaran 5 — Item hilang setelah Ubah / Submit Ulang (12 Okt 2026)
+
+- **Temuan (severity 4, dilaporkan CFO dari live):** pengajuan yang direvisi lalu disubmit ulang jadi tanpa item; total tetap. Penyebab: halaman Ubah hapus item dulu, lalu insert dengan kolom `jumlah` (GENERATED di DB) tanpa cek error. Insert selalu gagal.
+- **Do:** tanpa `jumlah`; insert baru dulu → update status → hapus lama; error ditampilkan, gagal = tidak ada yang berubah. Mock DB meniru kolom generated + `__gagalInsert`.
+- **Check:** K42 kandidat lulus, live gagal (item 2→0). Khusus 42/42, unit 44/44, deno 10/10.
+- **Act:** owner jalankan `supabase/sql/putaran-5.sql` untuk daftar pengajuan yang itemnya sudah hilang; item diisi ulang oleh pengaju.
+- **Pelajaran:** mock harus meniru aturan DB (kolom generated, constraint), bukan menerima apa saja.
