@@ -203,7 +203,7 @@ const JUDUL = '#judul-pengajuan, input[placeholder^="Tulis konteks"], input[plac
   const salah = []
   for (const [role, path, harus] of cases) {
     const s = await openApp(b, base, { role, path })
-    const ada = await s.page.getByRole('button', { name: 'Submit Ulang' }).isVisible().catch(() => false)
+    const ada = await s.page.getByRole('button', { name: /^(Submit Ulang|Simpan perubahan)$/ }).isVisible().catch(() => false)
     if (ada !== harus) salah.push(`${role} ${path} form=${ada}`)
     await s.ctx.close()
   }
@@ -499,6 +499,101 @@ async function bukaBatal(s) { await s.page.getByRole('button', { name: BATAL }).
     await s.ctx.close()
   }
   t('K35 Logo & nama app konsisten di 4 halaman x desktop/HP', salah.length === 0, salah.join(' | '))
+}
+
+// ---------------- Putaran 4 (12 Okt): Ditahan & Revisi kembali ke tahap peminta ----------------
+// K36. CFO melanjutkan pengajuan yang ia tahan -> kembali ke Menunggu CFO; tercatat; pengaju diberi tahu
+{
+  const s = await openApp(b, base, { role: 'cfo', path: '/pengajuan/P12' })
+  const berikut = await s.page.getByTestId('langkah-berikutnya').innerText().catch(() => '')
+  await s.page.getByRole('button', { name: /Lanjutkan pengajuan/ }).click({ timeout: 3000 }).catch(() => {})
+  await s.page.waitForTimeout(900)
+  const p = patchesTo(s.mock, 'pengajuan')[0]
+  const log = insertsTo(s.mock, 'approval_logs')[0]
+  const info = s.mock.log.notifs.find((n) => /dilanjutkan/.test(n.title))
+  t('K36 CFO lanjutkan tahanan -> Menunggu CFO, tercatat, pengaju diberi tahu',
+    /Menunggu CFO melanjutkan/.test(berikut) && p?.status === 'approved_step1' && p.rejection_type === null && log?.action === 'dilanjutkan' && info?.user_ids.includes('U-prc'),
+    `berikut="${berikut}" patch=${JSON.stringify(p)} log=${log?.action} notif=${JSON.stringify(s.mock.log.notifs.map((n) => n.title))}`)
+  await s.ctx.close()
+}
+
+// K37. Hak "Lanjutkan": hanya approver tahap tempat ditahan; pengaju lihat info + Ubah pengajuan, tanpa Release Hold
+{
+  const cases = [['cfo', true], ['cao', false], ['ceo', false], ['coo', false], ['procurement', false], ['finance', false]]
+  const salah = []
+  for (const [role, harus] of cases) {
+    const s = await openApp(b, base, { role, path: '/pengajuan/P12' })
+    const ada = await s.page.getByRole('button', { name: /Lanjutkan pengajuan/ }).isVisible().catch(() => false)
+    if (ada !== harus) salah.push(`${role} lanjutkan=${ada}`)
+    if (role === 'procurement') {
+      const info = await s.page.getByTestId('info-ditahan').innerText().catch(() => '')
+      const halaman = await s.page.innerText('body')
+      const berikut = await s.page.getByTestId('langkah-berikutnya').innerText().catch(() => '')
+      const release = await s.page.getByText(/Release Hold/).count()
+      if (!/masih bisa mengubah/.test(info) || !/Tunggu cashflow minggu depan/.test(halaman) || !/Menunggu CFO melanjutkan/.test(berikut) || release) salah.push(`pengaju info="${info.replace(/\n/g, ' ')}" berikut="${berikut}" release=${release}`)
+      if (!(await s.page.getByRole('button', { name: /Ubah pengajuan/ }).isVisible().catch(() => false))) salah.push('pengaju tanpa tombol Ubah')
+    }
+    await s.ctx.close()
+  }
+  t('K37 Lanjutkan hanya untuk approver tahap yang menahan; pengaju lihat info & Ubah (6 role)', salah.length === 0, salah.join(' | '))
+}
+
+// K38. Pengaju mengubah pengajuan yang ditahan -> isi tersimpan, status tetap Ditahan, alasan tahan tetap
+{
+  const s = await openApp(b, base, { role: 'procurement', path: '/pengajuan/P12/edit' })
+  await s.page.locator(JUDUL).first().fill('Sewa forklift 3 hari', { timeout: 3000 }).catch(() => {})
+  await s.page.waitForTimeout(900)
+  await s.page.getByRole('button', { name: /Simpan perubahan/ }).click({ timeout: 3000 }).catch(() => {})
+  await s.page.waitForTimeout(1000)
+  const p = patchesTo(s.mock, 'pengajuan')[0]
+  t('K38 Ubah saat ditahan -> tetap Ditahan, alasan tidak hilang', p?.status === 'hold' && p.judul === 'Sewa forklift 3 hari' && !('rejection_reason' in p), JSON.stringify(p))
+  await s.ctx.close()
+}
+
+// K39. Revisi diminta di tahap CFO -> dikirim ulang (langsung / lewat Ubah) kembali ke Menunggu CFO, CFO dapat "Perlu approval"
+{
+  const fx = clone(FIXTURE)
+  Object.assign(fx.pengajuan.find((p) => p.id === 'P11'), { step1_approved_by: 'U-coo', approved_step1_at: '2026-10-10T03:00:00Z' })
+  const salah = []
+  const s1 = await openApp(b, base, { role: 'operational', path: '/pengajuan/P11', fixture: fx })
+  await s1.page.getByRole('button', { name: /Ajukan Ulang/ }).click({ timeout: 3000 }).catch(() => {})
+  await s1.page.waitForTimeout(900)
+  const p1 = patchesTo(s1.mock, 'pengajuan')[0]; const a1 = s1.mock.log.notifs.find((n) => n.title === ACTION)
+  if (p1?.status !== 'approved_step1' || JSON.stringify(a1?.user_ids) !== '["U-cfo"]') salah.push(`langsung: ${JSON.stringify(p1)} notif=${JSON.stringify(a1?.user_ids)}`)
+  await s1.ctx.close()
+  const s2 = await openApp(b, base, { role: 'operational', path: '/pengajuan/P11/edit', fixture: fx })
+  await s2.page.waitForTimeout(900)
+  await s2.page.getByRole('button', { name: 'Submit Ulang' }).click({ timeout: 3000 }).catch(() => {})
+  await s2.page.waitForTimeout(1000)
+  const p2 = patchesTo(s2.mock, 'pengajuan')[0]
+  if (p2?.status !== 'approved_step1' || p2.rejection_type !== null) salah.push(`lewat Ubah: ${JSON.stringify(p2)}`)
+  await s2.ctx.close()
+  t('K39 Kirim ulang setelah revisi kembali ke tahap peminta (langsung & lewat Ubah)', salah.length === 0, salah.join(' | '))
+}
+
+// K40. "Berikutnya:" di Detail menjelaskan siapa yang harus bertindak, di semua status
+{
+  const harap = [['P01', 'Menunggu COO menyetujui'], ['P02', 'Menunggu CAO menyetujui'], ['P05', 'Menunggu CFO menyetujui'], ['P03', 'Menunggu CFO menyetujui'], ['P06', 'Menunggu CEO final approve'], ['P12', 'Menunggu CFO melanjutkan'], ['P11', 'Menunggu pengaju mengubah'], ['P13', 'Selesai: ditolak'], ['P07', 'pengaju membuat LPJ'], ['P09', 'Selesai: dana sudah ditransfer']]
+  const salah = []
+  for (const [id, teks] of harap) {
+    const s = await openApp(b, base, { role: 'cfo', path: `/pengajuan/${id}` })
+    const isi = await s.page.getByTestId('langkah-berikutnya').innerText().catch(() => '')
+    if (!isi.includes(teks)) salah.push(`${id}: "${isi}"`)
+    await s.ctx.close()
+  }
+  t('K40 "Berikutnya:" benar di 10 status/divisi', salah.length === 0, salah.join(' | '))
+}
+
+// K41. Surat: kolom approver sisa siklus lama tidak memunculkan TTD (status kembali Menunggu Review)
+{
+  const fx = clone(FIXTURE)
+  Object.assign(fx.pengajuan.find((p) => p.id === 'P01'), { step1_approved_by: 'U-coo', approved_step1_at: '2026-10-09T03:00:00Z' })
+  const s = await openApp(b, base, { role: 'coo', path: '/pengajuan/P01', fixture: fx })
+  const dl = await Promise.all([s.page.waitForEvent('download', { timeout: 15000 }), s.page.getByRole('button', { name: /Download Surat/ }).click()]).then(([d]) => d).catch(() => null)
+  const pdf = dl ? (await import('node:fs')).readFileSync(await dl.path(), 'latin1') : ''
+  const gambar = dl ? [...pdf.matchAll(/cm\s*\/I(\d+) Do/g)].length : -1
+  t('K41 Surat Menunggu Review dengan kolom approver sisa -> hanya logo (tanpa TTD)', gambar === 1, `gambar=${gambar}`)
+  await s.ctx.close()
 }
 
 await b.close()

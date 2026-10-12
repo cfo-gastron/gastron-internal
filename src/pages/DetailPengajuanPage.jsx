@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
-import { canApprovePengajuan, canAccessLpj as canAccessLpjRule, canChangeSubkategori, rencanaBatalApproval } from '../lib/approval'
+import { canApprovePengajuan, canAccessLpj as canAccessLpjRule, canChangeSubkategori, rencanaBatalApproval, tahapTerakhir, canLanjutkanTahanan, langkahBerikutnya } from '../lib/approval'
 import { BELUM_DIKATEGORIKAN } from '../lib/subkategori'
 import { REKENING_FIELDS, REKENING_JUDUL, labelRekening } from '../lib/rekening'
 import { insertPengajuanToCashflow } from '../lib/cashflow'
@@ -59,7 +59,6 @@ export default function DetailPengajuanPage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
 
   const [showRejectModal, setShowRejectModal] = useState(false)
-  const [showHoldModal, setShowHoldModal] = useState(false)
   const [showFinalApproveModal, setShowFinalApproveModal] = useState(false)
   const [rejectType, setRejectType] = useState('revision')
   const [rejectReason, setRejectReason] = useState('')
@@ -119,12 +118,6 @@ export default function DetailPengajuanPage() {
     if (!pengajuan) return false
     if (!isOwner) return false
     return pengajuan.status === 'revision'
-  }
-
-  function canReleaseHold() {
-    if (!pengajuan) return false
-    if (!isOwner) return false
-    return pengajuan.status === 'hold'
   }
 
   const isFinalApprove = pengajuan?.status === 'approved_cfo'
@@ -218,12 +211,18 @@ export default function DetailPengajuanPage() {
     setActionLoading(false)
   }
 
+  // Kirim ulang tanpa perubahan setelah revisi -> kembali ke tahap yang meminta revisi
   async function handleResubmit() {
     setActionLoading(true)
-    await supabase.from('pengajuan').update({
-      status: 'submitted', rejection_type: null, rejection_reason: null,
-      submitted_at: new Date().toISOString(),
-    }).eq('id', id)
+    const tahap = tahapTerakhir(pengajuan)
+    const { data: updated, error: upErr } = await supabase.from('pengajuan').update({
+      status: tahap, rejection_type: null, rejection_reason: null,
+      ...(tahap === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
+    }).eq('id', id).eq('status', 'revision').select('id')
+    if (upErr || !updated?.length) {
+      setActionError(upErr ? `Gagal mengirim ulang: ${upErr.message}` : 'Status pengajuan sudah berubah. Halaman dimuat ulang.')
+      await fetchDetail(); setActionLoading(false); return
+    }
     await supabase.from('approval_logs').insert({
       pengajuan_id: id, action: 'submitted',
       action_by: profile.id, role_at_time: profile.role,
@@ -231,16 +230,38 @@ export default function DetailPengajuanPage() {
     })
     notifyPengajuanUpdate(
       { ...pengajuan, id },
-      'submitted',
-      { title: '📝 Pengajuan diajukan ulang', body: `"${pengajuan.judul}" diajukan ulang oleh ${profile.full_name}` }
+      tahap,
+      { title: '📝 Pengajuan diajukan ulang', body: `"${pengajuan.judul}" diajukan ulang oleh ${profile.full_name}, kembali ke ${STATUS_LABEL[tahap]}` }
     )
-    setShowHoldModal(false)
     fetchDetail()
     setActionLoading(false)
   }
 
+  // Lanjutkan pengajuan yang Ditahan -> kembali ke tahap tempat ia ditahan (oleh approver tahap itu)
+  async function handleLanjutkan() {
+    setActionLoading(true); setActionError('')
+    const tahap = tahapTerakhir(pengajuan)
+    const { data: updated, error: upErr } = await supabase.from('pengajuan')
+      .update({ status: tahap, rejection_type: null, rejection_reason: null })
+      .eq('id', id).eq('status', 'hold').select('id')
+    if (upErr || !updated?.length) {
+      setActionError(upErr ? `Gagal melanjutkan: ${upErr.message}` : 'Status pengajuan sudah berubah. Halaman dimuat ulang.')
+      await fetchDetail(); setActionLoading(false); return
+    }
+    const { error: logErr } = await supabase.from('approval_logs').insert({
+      pengajuan_id: id, action: 'dilanjutkan', action_by: profile.id, role_at_time: profile.role,
+      catatan: `Dilanjutkan oleh ${profile.full_name}, kembali ke ${STATUS_LABEL[tahap]}`,
+    })
+    if (logErr) console.error('Gagal mencatat di timeline:', logErr)
+    notifyPengajuanUpdate({ ...pengajuan, id }, tahap, {
+      title: '▶️ Pengajuan dilanjutkan',
+      body: `"${pengajuan.judul}" tidak ditahan lagi, kembali ke ${STATUS_LABEL[tahap]}`,
+    })
+    await fetchDetail()
+    setActionLoading(false)
+  }
+
   function handleEditResubmit() {
-    setShowHoldModal(false)
     setShowRejectModal(false)
     navigate(`/pengajuan/${id}/edit`)
   }
@@ -248,7 +269,7 @@ export default function DetailPengajuanPage() {
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive || !!actionError || !!rencanaBatalApproval(profile?.id, pengajuan)
+  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canLanjutkanTahanan(profile?.role, pengajuan) || (isOwner && pengajuan.status === 'hold') || canArchive || !!actionError || !!rencanaBatalApproval(profile?.id, pengajuan)
   const penerimaUtama = penerima[0]
   const penerimaLabel = penerimaUtama
     ? labelRekening(penerimaUtama)
@@ -348,13 +369,21 @@ export default function DetailPengajuanPage() {
         </div>
       )}
 
-      {canReleaseHold() && (
-        <div style={{ background: '#F3E5F5', borderRadius: 12, border: '1px solid #CE93D8', padding: '16px' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#6A1B9A', marginBottom: 4 }}>Pengajuan sedang ditahan</div>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Jika kondisi sudah memungkinkan, kamu bisa release dan ajukan ulang</div>
-          <button onClick={() => setShowHoldModal(true)}
-            style={{ width: '100%', padding: '12px', background: '#6A1B9A', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-            🔓 Release Hold
+      {canLanjutkanTahanan(profile?.role, pengajuan) && (
+        <button onClick={handleLanjutkan} disabled={actionLoading}
+          style={{ width: '100%', padding: isMobile ? '13px' : '14px', minHeight: 44, background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+          {actionLoading ? 'Memproses...' : '▶ Lanjutkan pengajuan'}
+        </button>
+      )}
+
+      {isOwner && pengajuan.status === 'hold' && (
+        <div data-testid="info-ditahan" style={{ background: '#F7F7F7', borderRadius: 12, border: '1px solid #EBEBEB', padding: '14px 16px' }}>
+          <div style={{ fontSize: 13, color: '#555', lineHeight: 1.5, marginBottom: 10 }}>
+            Selama ditahan, kamu masih bisa mengubah isi pengajuan.
+          </div>
+          <button onClick={handleEditResubmit}
+            style={{ width: '100%', padding: '11px', minHeight: 44, background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#333', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ✏️ Ubah pengajuan
           </button>
         </div>
       )}
@@ -410,6 +439,9 @@ export default function DetailPengajuanPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#111', lineHeight: 1.3 }}>{pengajuan.judul}</div>
             <div style={{ fontSize: 11, color: '#999', marginTop: 4, fontFamily: 'monospace' }}>{pengajuan.kode_surat}</div>
+            <div data-testid="langkah-berikutnya" style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
+              <span style={{ color: '#999' }}>Berikutnya: </span>{langkahBerikutnya(pengajuan, { hasLpj })}
+            </div>
           </div>
           <span className={`badge ${STATUS_CLASS[pengajuan.status]}`} style={{ fontSize: 11, padding: '5px 10px', flexShrink: 0 }}>
             {STATUS_LABEL[pengajuan.status]}
@@ -572,10 +604,10 @@ export default function DetailPengajuanPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {logs.map((log) => (
                 <div key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : log.action === 'approval_dibatalkan' ? '#999' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : log.action === 'approval_dibatalkan' ? '#999' : log.action === 'dilanjutkan' ? '#1565C0' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>
-                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'approval_dibatalkan' ? 'Approval dibatalkan' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : log.action === 'rejected' ? 'Ditolak' : log.action}
+                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'approval_dibatalkan' ? 'Approval dibatalkan' : log.action === 'dilanjutkan' ? 'Dilanjutkan' : log.action === 'diubah' ? 'Isi pengajuan diubah' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : log.action === 'rejected' ? 'Ditolak' : log.action}
                       {log.user && <span style={{ color: '#999', fontWeight: 400 }}> oleh {log.user.full_name}</span>}
                     </div>
                     {log.catatan && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{log.catatan}</div>}
@@ -684,32 +716,6 @@ export default function DetailPengajuanPage() {
         </div>
       )}
 
-      {/* HOLD RELEASE MODAL */}
-      {showHoldModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '24px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 440 }}>
-            {isMobile && <div style={{ width: 36, height: 4, background: '#E0E0E0', borderRadius: 2, margin: '0 auto 20px' }} />}
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8 }}>🔓 Release Hold</div>
-            <div style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>Pilih tindak lanjut untuk pengajuan ini</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button onClick={handleEditResubmit}
-                style={{ width: '100%', padding: '14px', background: '#F5F5F5', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#333', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                ✏️ Edit dulu, lalu ajukan ulang
-                <div style={{ fontSize: 11, color: '#999', fontWeight: 400, marginTop: 2 }}>Ubah item, jumlah, atau keterangan sebelum submit</div>
-              </button>
-              <button onClick={handleResubmit} disabled={actionLoading}
-                style={{ width: '100%', padding: '14px', background: '#6A1B9A', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', opacity: actionLoading ? 0.7 : 1 }}>
-                ↩ Ajukan ulang langsung
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 400, marginTop: 2 }}>Tanpa perubahan, langsung submit ulang</div>
-              </button>
-              <button onClick={() => setShowHoldModal(false)}
-                style={{ width: '100%', padding: '13px', background: 'transparent', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#999', cursor: 'pointer', fontFamily: 'inherit' }}>
-                Batal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

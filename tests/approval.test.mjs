@@ -186,3 +186,33 @@ test('Setiap batal approval mengembalikan ke status yang punya approver utama (t
     if (r) assert.equal(pengajuanApprovers(r.ke, d).utama.length, 1, `${d} ${st} -> ${r.ke}`)
   }
 })
+
+// ---- Putaran 4: Ditahan & Revisi kembali ke tahap peminta ----
+import { tahapTerakhir, canLanjutkanTahanan, persetujuanBerlaku, langkahBerikutnya } from '../src/lib/approval.js'
+
+test('tahapTerakhir: status tahap apa adanya; hold/revisi/tolak dibaca dari kolom approver', () => {
+  assert.equal(tahapTerakhir({ status: 'approved_step1' }), 'approved_step1')
+  assert.equal(tahapTerakhir({ status: 'hold' }), 'submitted')
+  assert.equal(tahapTerakhir({ status: 'hold', step1_approved_by: 'X' }), 'approved_step1')
+  assert.equal(tahapTerakhir({ status: 'revision', step1_approved_by: 'X', cfo_approved_by: 'Y' }), 'approved_cfo')
+})
+
+test('Lanjutkan tahanan = yang berhak approve di tahap itu (semua divisi x tahap x role)', () => {
+  for (const d of DIVISIONS) for (const cols of [{}, { step1_approved_by: 'X' }, { step1_approved_by: 'X', cfo_approved_by: 'Y' }]) {
+    const p = { division: d, status: 'hold', ...cols }
+    for (const r of ROLES) assert.equal(canLanjutkanTahanan(r, p), canApprovePengajuan(r, tahapTerakhir(p), d), `${d} ${JSON.stringify(cols)} ${r}`)
+    assert.equal(canLanjutkanTahanan('cfo', { ...p, status: 'revision' }), false)
+  }
+})
+
+test('persetujuanBerlaku: kolom sisa diabaikan kalau status sudah kembali', () => {
+  assert.deepEqual(persetujuanBerlaku({ status: 'submitted', step1_approved_by: 'X', cfo_approved_by: 'Y' }), { step1: false, cfo: false })
+  assert.deepEqual(persetujuanBerlaku({ status: 'approved_step1', step1_approved_by: 'X', cfo_approved_by: 'Y' }), { step1: true, cfo: false })
+  assert.deepEqual(persetujuanBerlaku({ status: 'approved_ceo', step1_approved_by: 'X', cfo_approved_by: 'Y' }), { step1: true, cfo: true })
+  assert.deepEqual(persetujuanBerlaku({ status: 'hold', step1_approved_by: 'X' }), { step1: true, cfo: false })
+})
+
+test('langkahBerikutnya tidak pernah kosong untuk status yang dikenal', () => {
+  for (const st of ['submitted', 'approved_step1', 'approved_cfo', 'approved_ceo', 'revision', 'hold', 'rejected'])
+    for (const d of DIVISIONS) assert.ok(langkahBerikutnya({ status: st, division: d, tipe: 'kebutuhan' }).length > 5, `${st} ${d}`)
+})

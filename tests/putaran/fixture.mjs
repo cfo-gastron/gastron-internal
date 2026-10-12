@@ -72,6 +72,10 @@ for (const [id, kode, judul, division, status, by, ago, total, subkategori, tipe
   if (extra.rejection_type) approval_logs.push({ id: `${id}-L9`, pengajuan_id: id, action: extra.rejection_type, action_by: 'U-cfo', role_at_time: 'cfo', rejection_type: extra.rejection_type, created_at: d(ago - 0.5), catatan: extra.rejection_reason })
 }
 
+// P12 ditahan CFO di tahap CFO (CAO sudah approve tahap 1) — kasus nyata 12 Okt
+Object.assign(pengajuan.find((x) => x.id === 'P12'), { step1_approved_by: 'U-cao', approved_step1_at: d(4.8) })
+approval_logs.push({ id: 'P12-L1', pengajuan_id: 'P12', action: 'approved', action_by: 'U-cao', role_at_time: 'cao', created_at: d(4.8), catatan: 'Approved oleh Dewi Lestari' })
+
 // LPJ: P07 belum ada, P08 submitted, P15 approved_finance, P14 closed
 const lpj = [
   { id: 'LPJ-08', pengajuan_id: 'P08', submitted_by: 'U-prc', status: 'submitted', total_pengajuan: 9800000, total_realisasi: 9450000, metode_pengembalian: 'Transfer balik', submitted_at: d(3) },

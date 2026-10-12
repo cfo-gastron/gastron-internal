@@ -12,6 +12,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { REKENING_FIELDS, REKENING_JUDUL } from './rekening'
+import { persetujuanBerlaku } from './approval'
 
 const SUPABASE_URL = 'https://vybfhlpmtsdtegbrdsvo.supabase.co'
 const SIGNATURES_BUCKET = `${SUPABASE_URL}/storage/v1/object/public/signatures`
@@ -69,8 +70,10 @@ function getApprovers(pengajuan, logs) {
     const log = [...logs].reverse().find(l => l.action_by === userId && l.user?.full_name)
     return log?.user?.full_name || null
   }
-  const step1 = { by: pengajuan.step1_approved_by, name: namaDari(pengajuan.step1_approved_by) }
-  const cfo = { by: pengajuan.cfo_approved_by, name: namaDari(pengajuan.cfo_approved_by) }
+  // Hanya persetujuan yang masih berlaku untuk status sekarang (kolom sisa siklus lama diabaikan)
+  const berlaku = persetujuanBerlaku(pengajuan)
+  const step1 = { by: berlaku.step1 ? pengajuan.step1_approved_by : null, name: namaDari(pengajuan.step1_approved_by) }
+  const cfo = { by: berlaku.cfo ? pengajuan.cfo_approved_by : null, name: namaDari(pengajuan.cfo_approved_by) }
 
   if (division === 'OPR') {
     return [

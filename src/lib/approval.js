@@ -136,3 +136,47 @@ export function rencanaBatalApproval(userId, p) {
   }
   return null
 }
+
+// ---- Ditahan / Revisi: kembali ke tahap yang menahan atau meminta revisi (keputusan owner 12 Okt) ----
+const URUTAN_TAHAP = ['submitted', 'approved_step1', 'approved_cfo', 'approved_ceo']
+const NAMA_ROLE = { coo: 'COO', cao: 'CAO', cfo: 'CFO', ceo: 'CEO', finance: 'Finance' }
+
+// Tahap terakhir pengajuan. Untuk Ditahan / Perlu Revisi / Ditolak dibaca dari siapa yang sudah approve:
+// CFO sudah approve -> tahap CEO; tahap 1 sudah approve -> tahap CFO; belum ada -> tahap 1.
+export function tahapTerakhir(p) {
+  if (!p) return 'submitted'
+  if (URUTAN_TAHAP.includes(p.status)) return p.status
+  if (p.cfo_approved_by) return 'approved_cfo'
+  if (p.step1_approved_by) return 'approved_step1'
+  return 'submitted'
+}
+
+// Yang boleh melanjutkan pengajuan Ditahan = yang berhak approve di tahap tempat ia ditahan
+export function canLanjutkanTahanan(role, p) {
+  return !!p && p.status === 'hold' && canApprovePengajuan(role, tahapTerakhir(p), p.division)
+}
+
+// Persetujuan yang masih berlaku (dipakai tanda tangan surat). Kolom approver yang tertinggal dari
+// siklus lama tidak dihitung kalau statusnya sudah kembali ke tahap sebelumnya.
+export function persetujuanBerlaku(p) {
+  const i = URUTAN_TAHAP.indexOf(tahapTerakhir(p))
+  return { step1: i >= 1 && !!p?.step1_approved_by, cfo: i >= 2 && !!p?.cfo_approved_by }
+}
+
+// Satu kalimat "Berikutnya: …" untuk halaman Detail
+export function langkahBerikutnya(p, { hasLpj = false } = {}) {
+  if (!p) return ''
+  const siapa = (st) => pengajuanApprovers(st, p.division).utama.map((r) => NAMA_ROLE[r] || r).join('/')
+  switch (p.status) {
+    case 'submitted': return `Menunggu ${siapa('submitted')} menyetujui`
+    case 'approved_step1': return `Menunggu ${siapa('approved_step1')} menyetujui`
+    case 'approved_cfo': return `Menunggu ${siapa('approved_cfo')} final approve & transfer`
+    case 'hold': return `Ditahan. Menunggu ${siapa(tahapTerakhir(p))} melanjutkan`
+    case 'revision': return 'Menunggu pengaju mengubah lalu mengirim ulang'
+    case 'rejected': return 'Selesai: ditolak'
+    case 'approved_ceo':
+      if (!needsLpj(p)) return 'Selesai: dana sudah ditransfer'
+      return hasLpj ? 'Dana sudah ditransfer, LPJ sedang diproses' : 'Dana sudah ditransfer. Berikutnya: pengaju membuat LPJ'
+    default: return ''
+  }
+}

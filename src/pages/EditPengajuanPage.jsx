@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
-import { canEditPengajuan } from '../lib/approval'
+import { canEditPengajuan, tahapTerakhir } from '../lib/approval'
+import { STATUS_LABEL } from '../lib/status'
 import DeleteButton from '../components/DeleteButton'
 import RekeningTujuanFields from '../components/RekeningTujuanFields'
 import { REKENING_KOSONG, rapikanRekening } from '../lib/rekening'
@@ -138,6 +139,10 @@ export default function EditPengajuanPage() {
 
     try {
       const finalSubkategori = await subOtomatis.pastikan()
+      // Ditahan: isi disimpan, tetap ditahan (approver yang melanjutkan).
+      // Perlu Revisi: dikirim ulang ke tahap yang meminta revisi.
+      const sedangDitahan = pengajuan.status === 'hold'
+      const statusBaru = sedangDitahan ? 'hold' : tahapTerakhir(pengajuan)
 
       // Update pengajuan — kode_surat tidak berubah
       const { data: pUpdated, error: pErr } = await supabase.from('pengajuan').update({
@@ -147,10 +152,9 @@ export default function EditPengajuanPage() {
         metode_pembayaran: metodeBayar,
         catatan,
         total_pengajuan: total,
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-        rejection_reason: null,
-        rejection_type: null,
+        status: statusBaru,
+        ...(statusBaru === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
+        ...(sedangDitahan ? {} : { rejection_reason: null, rejection_type: null }),
       }).eq('id', id).eq('status', pengajuan.status).select('id')
 
       if (pErr) throw pErr
@@ -202,19 +206,22 @@ export default function EditPengajuanPage() {
         }
       }
 
-      // Log disubmit ulang
-      await supabase.from('approval_logs').insert({
+      // Catat di timeline
+      const { error: logErr } = await supabase.from('approval_logs').insert({
         pengajuan_id: id,
-        action: 'submitted',
+        action: sedangDitahan ? 'diubah' : 'submitted',
         action_by: profile.id,
         role_at_time: profile.role,
-        catatan: 'Disubmit ulang setelah revisi',
+        catatan: sedangDitahan ? 'Isi pengajuan diubah saat ditahan' : `Dikirim ulang setelah revisi, kembali ke ${STATUS_LABEL[statusBaru]}`,
       })
+      if (logErr) console.error('Gagal mencatat di timeline:', logErr)
 
       notifyPengajuanUpdate(
         { ...pengajuan, id, judul, total_pengajuan: total },
-        'submitted',
-        { title: '📝 Pengajuan diajukan ulang', body: `"${judul}" diajukan ulang oleh ${profile.full_name} setelah revisi` }
+        statusBaru,
+        sedangDitahan
+          ? { title: '✏️ Pengajuan yang ditahan diubah', body: `"${judul}" diubah oleh ${profile.full_name}. Masih ditahan.` }
+          : { title: '📝 Pengajuan diajukan ulang', body: `"${judul}" diajukan ulang oleh ${profile.full_name} setelah revisi, kembali ke ${STATUS_LABEL[statusBaru]}` }
       )
 
       navigate(`/pengajuan/${id}`)
@@ -462,7 +469,7 @@ export default function EditPengajuanPage() {
         </button>
         <button onClick={handleSubmit} disabled={submitting}
           style={{ flex: 2, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#fff', cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1 }}>
-          {submitting ? 'Menyimpan...' : 'Submit Ulang'}
+          {submitting ? 'Menyimpan...' : pengajuan.status === 'hold' ? 'Simpan perubahan' : 'Submit Ulang'}
         </button>
       </div>
     </div>

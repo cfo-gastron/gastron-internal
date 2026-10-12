@@ -10,6 +10,7 @@ Suite tes: `tests/putaran/` (jalankan: `npm run putaran -- <baselineUrl> <kandid
 |---|---|---|---|
 | 0 | 11 Okt 2026 | Notif Telegram (ganti web push iPhone), notif "Perlu approval kamu", fix mapping Pembelian Aset | Backend 10/10, matriks notif 23/23, klik UI 23/23 |
 | 1 | 11 Okt 2026 | Regression suite permanen + heuristic evaluation independen (39 temuan) + Batch 1 | K 22/22 (baseline 4/22), klik 199 tombol 0 error, 34 layar, angka lama 0 berubah |
+| 4 | 12 Okt 2026 | Alur Ditahan & Revisi: "Lanjutkan" oleh approver tahap itu, kembali ke tahap peminta, "Berikutnya:" di Detail, TTD surat sesuai status | K 41/41, unit 44/44 + 10/10 |
 | 3 | 12 Okt 2026 | Batalkan approval, logo konsisten (evaluasi brand), rekening tujuan (urutan & nama baru), contoh judul konteks CNG, TTD surat dari kolom approver | K 35/35 (baseline 4/35), unit 40/40 + 10/10, klik 207 tombol 0 error, 34 layar, lint 17 error lama |
 | 2 | 11-12 Okt 2026 | Subkategori otomatis dari judul (AI), kunci `/api/claude`, nama file surat, evaluasi surat, logo & TTD surat tidak gepeng | K 26/26, unit 35/35 + 10/10, klik 207 tombol 0 error, 34 layar, angka lama 0 berubah, lint 19 → 18 |
 
@@ -46,6 +47,37 @@ Baseline: production (commit `e0ec3b8`, sebelum Telegram) · Kandidat: r1 (Teleg
 - Definition of done terpenuhi (lihat skill putaran).
 - Standarisasi: tiap bug yang difix = tes K baru di `tests/putaran/khusus.mjs`; tes K dijalankan juga ke baseline untuk bukti tes menangkap bug.
 - Pengecualian sadar: gagal unggah lampiran setelah pengajuan terkirim masih pakai `alert()` (halaman langsung pindah); diganti saat validasi per isian (H14).
+
+## Putaran #4 · 12 Okt 2026
+Pemicu: owner (CFO) menahan pengajuan dan tidak punya cara melanjutkannya — layar CFO hanya Download & Arsipkan.
+Keputusan owner: (1) yang melanjutkan = **approver di tahap yang menahan**; pengaju hanya melihat status & tetap bisa mengubah isi. (2) setelah dilanjutkan / dikirim ulang setelah revisi, pengajuan **kembali ke tahap yang menahan / meminta revisi** (approval sebelumnya tetap berlaku).
+
+### Evaluasi alur status (titik buntu & kebingungan)
+| ID | Temuan | Sev | Status |
+|---|---|---|---|
+| A1 | Ditahan = buntu untuk yang menahan: hanya pengaju yang bisa "Release Hold", padahal alasan tahan ("tunggu cashflow minggu depan") keputusan approver | 4 | Selesai: tombol "Lanjutkan pengajuan" untuk approver tahap itu |
+| A2 | Release Hold / Ajukan Ulang selalu mulai lagi dari tahap 1 — COO/CAO approve ulang walau ditahan di tahap CFO | 3 | Selesai: kembali ke tahap yang menahan / meminta revisi |
+| A3 | Tidak ada keterangan siapa yang harus bertindak berikutnya di Detail (setelah Ditahan, approver & pengaju sama-sama menunggu) | 3 | Selesai: baris "Berikutnya: …" di semua status (`langkahBerikutnya`) |
+| A4 | Kirim ulang tidak mengosongkan kolom approver → surat bisa menampilkan TTD lama walau status kembali ke awal | 3 | Selesai: TTD dari `persetujuanBerlaku` (status + kolom) |
+| A5 | Timeline: aksi baru tampil "Ditolak" (fallback) | 2 | Selesai: label Dilanjutkan / Isi pengajuan diubah / Approval dibatalkan |
+| A6 | Ditahan tanpa tanggal: tidak ada pengingat, tidak muncul di "Perlu approval kamu" → mudah terlupa | 2 | Usulan: "Tahan sampai tanggal" + pengingat Telegram (bareng B1 pengingat otomatis) |
+| A7 | Modal "Tolak / Hold / Revisi": judul selalu "Tolak Pengajuan", tombol "Konfirmasi", tidak ada penjelasan beda ketiganya | 2 | Backlog (H22) |
+| A8 | Ditolak = akhir tanpa jalan lanjut; pengaju harus membuat pengajuan baru dari nol | 1 | Usulan: tombol "Buat ulang dari pengajuan ini" (salin isi) |
+| A9 | Panel aksi Detail di HP bisa 4-5 tombol (Approve, Tolak, Batalkan approval, Download, Arsipkan) | 2 | Backlog (H21) |
+
+### Do
+| ID | Perubahan | Tes |
+|---|---|---|
+| A1 | `canLanjutkanTahanan` + tombol "▶ Lanjutkan pengajuan"; log `dilanjutkan`; notif ke semua pihak | K36, K37 |
+| A1b | Pengaju saat Ditahan: kotak info (alasan + "Menunggu CFO melanjutkan") + "Ubah pengajuan"; Release Hold dihapus | K37 |
+| A1c | Ubah saat Ditahan: isi tersimpan, tetap Ditahan, tombol "Simpan perubahan", log `diubah` | K38 |
+| A2 | `tahapTerakhir`: kirim ulang setelah revisi (langsung & lewat Ubah) kembali ke tahap peminta | K39 |
+| A3 | "Berikutnya: …" di Detail | K40 |
+| A4 | TTD surat dari `persetujuanBerlaku` | K41 |
+
+### Check
+- Unit 44/44, Edge Function 10/10; tes khusus 41/41 (K17 disesuaikan: tombol halaman Ubah saat Ditahan sekarang "Simpan perubahan")
+- SQL `putaran-3.sql` diperbarui: daftar action memuat 'dilanjutkan' & 'diubah'
 
 ## Putaran #3 · 12 Okt 2026
 Permintaan owner: (1) evaluasi detail logo/nama app di sidebar, (2) contoh & arahan judul jangan kandang lagi (market sudah bukan peternakan), (3) urutan rekening: atas nama, bank, nomor rekening, lalu nama penerima dengan istilah yang tidak menyesatkan, (4) CFO bisa membatalkan approval.
