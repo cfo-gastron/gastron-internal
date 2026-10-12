@@ -3,28 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import TelegramBanner from '../components/TelegramBanner'
-
-const STATUS_LABEL = {
-  draft: 'Draft',
-  submitted: 'Menunggu Review',
-  approved_step1: 'Menunggu CFO',
-  approved_cfo: 'Menunggu CEO',
-  approved_ceo: 'Transferred',
-  revision: 'Perlu Revisi',
-  hold: 'Ditahan',
-  rejected: 'Ditolak',
-}
-
-const STATUS_CLASS = {
-  draft: 'badge-pending',
-  submitted: 'badge-pending',
-  approved_step1: 'badge-step1',
-  approved_cfo: 'badge-cfo',
-  approved_ceo: 'badge-approved',
-  revision: 'badge-revision',
-  hold: 'badge-hold',
-  rejected: 'badge-rejected',
-}
+import PerluApproval from '../components/PerluApproval'
+import { STATUS_LABEL, STATUS_CLASS, STATUS_GROUPS, matchStatusFilter } from '../lib/status'
+import BrandMark from '../components/BrandMark'
 
 const NO_LPJ_TYPES = (p) => p.tipe === 'reimbursement' || p.subkategori === 'Trip Operasional'
 
@@ -134,26 +115,27 @@ export default function DashboardPage() {
 
   const stats = {
     total: pengajuan.length,
-    pending: pengajuan.filter(p => ['submitted', 'approved_step1', 'approved_cfo'].includes(p.status)).length,
-    approved: pengajuan.filter(p => p.status === 'approved_ceo').length,
-    rejected: pengajuan.filter(p => ['rejected', 'hold', 'revision'].includes(p.status)).length,
+    pending: pengajuan.filter(p => STATUS_GROUPS.menunggu.includes(p.status)).length,
+    approved: pengajuan.filter(p => STATUS_GROUPS.transferred.includes(p.status)).length,
+    rejected: pengajuan.filter(p => STATUS_GROUPS.ditolak.includes(p.status)).length,
   }
 
   // Handle klik card stats
   function handleStatClick(type) {
     if (type === 'total') { setFilterStatus(''); setFilterDivisi(''); setSearch('') }
-    else if (type === 'pending') setFilterStatus('submitted')
-    else if (type === 'approved') setFilterStatus('approved_ceo')
-    else if (type === 'rejected') setFilterStatus('rejected')
+    else if (type === 'pending') setFilterStatus('grup:menunggu')
+    else if (type === 'approved') setFilterStatus('grup:transferred')
+    else if (type === 'rejected') setFilterStatus('grup:ditolak')
     setCurrentPage(1)
   }
 
   // Cek active stat card
   function getActiveStatType() {
     if (!filterStatus && !search && !filterDivisi) return 'total'
-    if (['submitted', 'approved_step1', 'approved_cfo'].includes(filterStatus)) return 'pending'
-    if (filterStatus === 'approved_ceo') return 'approved'
-    if (['rejected', 'hold', 'revision'].includes(filterStatus)) return 'rejected'
+    if (search || filterDivisi) return null
+    if (filterStatus === 'grup:menunggu') return 'pending'
+    if (filterStatus === 'grup:transferred') return 'approved'
+    if (filterStatus === 'grup:ditolak') return 'rejected'
     return null
   }
   const activeStatType = getActiveStatType()
@@ -162,7 +144,7 @@ export default function DashboardPage() {
   const filtered = pengajuan.filter(p => {
     const q = search.toLowerCase()
     const matchSearch = !q || p.judul?.toLowerCase().includes(q) || p.kode_surat?.toLowerCase().includes(q)
-    const matchStatus = !filterStatus || p.status === filterStatus
+    const matchStatus = matchStatusFilter(p.status, filterStatus)
     const matchDivisi = !filterDivisi || p.division === filterDivisi
     return matchSearch && matchStatus && matchDivisi
   })
@@ -188,13 +170,7 @@ export default function DashboardPage() {
       {!isMobile && (
         <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50 }}>
           <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #F5F5F5' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>Gastron</div>
-                <div style={{ fontSize: 10, color: '#999', letterSpacing: 0.5 }}>Sistem Pengajuan</div>
-              </div>
-            </div>
+            <BrandMark />
           </div>
           <nav style={{ padding: '16px 12px', flex: 1 }}>
             {[
@@ -233,10 +209,7 @@ export default function DashboardPage() {
         )}
 
         {isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <img src="/logo-gastron.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>Gastron</div>
-          </div>
+          <div style={{ marginBottom: 20 }}><BrandMark compact /></div>
         )}
 
         <TelegramBanner />
@@ -246,12 +219,15 @@ export default function DashboardPage() {
           <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
 
+        {isApprover && !loading && <PerluApproval role={profile?.role} pengajuan={pengajuan} lpjMap={lpjMap} isMobile={isMobile} />}
+
         {/* Stats — clickable */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
           {STAT_CARDS.map((s) => {
             const isActive = activeStatType === s.type
             return (
-              <div key={s.type} onClick={() => handleStatClick(s.type)}
+              <div key={s.type} role="button" tabIndex={0} aria-pressed={isActive} onClick={() => handleStatClick(s.type)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStatClick(s.type) } }}
                 style={{
                   background: isActive ? '#FFF0F0' : '#fff',
                   borderRadius: 12,
@@ -296,6 +272,8 @@ export default function DashboardPage() {
               <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }}
                 style={{ padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', color: filterStatus ? '#111' : '#999', background: '#fff', cursor: 'pointer' }}>
                 <option value="">Semua Status</option>
+                <option value="grup:menunggu">Semua yang menunggu</option>
+                <option value="grup:ditolak">Semua ditolak / ditahan / revisi</option>
                 <option value="submitted">Menunggu Review</option>
                 <option value="approved_step1">Menunggu CFO</option>
                 <option value="approved_cfo">Menunggu CEO</option>

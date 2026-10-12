@@ -68,15 +68,15 @@ export default function TelegramBanner() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button onClick={handleNanti} style={{ padding: '8px 12px', background: 'transparent', border: 'none', borderRadius: 8, fontSize: 12, color: '#666', cursor: 'pointer' }}>
+          <button onClick={handleNanti} style={{ padding: '10px 12px', minHeight: 40, background: 'transparent', border: 'none', borderRadius: 8, fontSize: 12, color: '#666', cursor: 'pointer' }}>
             Nanti
           </button>
           {ready ? (
-            <a href={link} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 14px', background: '#C0272D', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#fff', textDecoration: 'none' }}>
+            <a href={link} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 14px', minHeight: 40, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', background: '#C0272D', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#fff', textDecoration: 'none' }}>
               Buka Telegram
             </a>
           ) : (
-            <button onClick={handleHubungkan} disabled={step === 'loading'} style={{ padding: '8px 14px', background: '#C0272D', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#fff', cursor: step === 'loading' ? 'default' : 'pointer', opacity: step === 'loading' ? 0.7 : 1 }}>
+            <button onClick={handleHubungkan} disabled={step === 'loading'} style={{ padding: '10px 14px', minHeight: 40, background: '#C0272D', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#fff', cursor: step === 'loading' ? 'default' : 'pointer', opacity: step === 'loading' ? 0.7 : 1 }}>
               {step === 'loading' ? 'Membuat link...' : 'Hubungkan Telegram'}
             </button>
           )}

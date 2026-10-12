@@ -17,3 +17,8 @@ create table if not exists public.telegram_link_tokens (
 -- Hanya Edge Function (service role) yang boleh baca/tulis tabel token.
 -- RLS aktif tanpa policy = tertutup untuk anon & user login.
 alter table public.telegram_link_tokens enable row level security;
+
+-- Project Supabase baru tidak otomatis memberi izin ke tabel baru.
+-- Edge Function memakai service_role, jadi izinnya diberikan eksplisit.
+grant select, insert, update, delete on public.telegram_link_tokens to service_role;
+revoke all on public.telegram_link_tokens from anon, authenticated;

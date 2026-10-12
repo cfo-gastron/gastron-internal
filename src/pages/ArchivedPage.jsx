@@ -2,28 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-
-const STATUS_LABEL = {
-  draft: 'Draft',
-  submitted: 'Menunggu Review',
-  approved_step1: 'Menunggu CFO',
-  approved_cfo: 'Menunggu CEO',
-  approved_ceo: 'Transferred',
-  revision: 'Perlu Revisi',
-  hold: 'Ditahan',
-  rejected: 'Ditolak',
-}
-
-const STATUS_CLASS = {
-  draft: 'badge-pending',
-  submitted: 'badge-pending',
-  approved_step1: 'badge-step1',
-  approved_cfo: 'badge-cfo',
-  approved_ceo: 'badge-approved',
-  revision: 'badge-revision',
-  hold: 'badge-hold',
-  rejected: 'badge-rejected',
-}
+import { STATUS_LABEL, STATUS_CLASS } from '../lib/status'
+import BrandMark from '../components/BrandMark'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -82,13 +62,7 @@ export default function ArchivedPage() {
           position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
         }}>
           <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #F5F5F5' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>Gastron</div>
-                <div style={{ fontSize: 10, color: '#999', letterSpacing: 0.5 }}>Sistem Pengajuan</div>
-              </div>
-            </div>
+            <BrandMark />
           </div>
 
           <nav style={{ padding: '16px 12px', flex: 1 }}>
@@ -145,8 +119,8 @@ export default function ArchivedPage() {
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <button onClick={() => navigate('/dashboard')}
-              style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#C0272D' }}>Gastron</div>
+              aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
+            <BrandMark compact />
           </div>
         )}
 

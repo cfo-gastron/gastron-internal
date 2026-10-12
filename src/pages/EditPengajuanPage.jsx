@@ -3,6 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
+import { canEditPengajuan } from '../lib/approval'
+import DeleteButton from '../components/DeleteButton'
+import RekeningTujuanFields from '../components/RekeningTujuanFields'
+import { REKENING_KOSONG, rapikanRekening } from '../lib/rekening'
+import SubkategoriOtomatis from '../components/SubkategoriOtomatis'
+import { useSubkategoriOtomatis } from '../hooks/useSubkategoriOtomatis'
+import JudulField from '../components/JudulField'
 
 const SATUAN_OPTIONS = ['Pcs', 'Unit', 'Kaleng', 'Liter', 'Kg', 'Box', 'Lembar', 'Trip', 'Bulan', 'Lainnya']
 
@@ -29,10 +36,7 @@ export default function EditPengajuanPage() {
   // Form state
   const [judul, setJudul] = useState('')
   const [tipe, setTipe] = useState('kebutuhan')
-  const [subkategori, setSubkategori] = useState('')
-  const [subkategoriList, setSubkategoriList] = useState([])
-  const [isLainnya, setIsLainnya] = useState(false)
-  const [lainnyaText, setLainnyaText] = useState('')
+  const [awalSub, setAwalSub] = useState(null)
   const [metodeBayar, setMetodeBayar] = useState('Transfer')
   const [catatan, setCatatan] = useState('')
   const [items, setItems] = useState([])
@@ -43,6 +47,7 @@ export default function EditPengajuanPage() {
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState([])
   const [newAttachments, setNewAttachments] = useState([])
 
+  const subOtomatis = useSubkategoriOtomatis(judul, items.map(it => it.uraian), awalSub)
   const total = items.reduce((s, i) => s + (Number(i.qty) * Number(i.harga_satuan)), 0)
 
   useEffect(() => {
@@ -54,12 +59,11 @@ export default function EditPengajuanPage() {
 
   async function fetchData() {
     setLoading(true)
-    const [p, i, pn, a, sub] = await Promise.all([
+    const [p, i, pn, a] = await Promise.all([
       supabase.from('pengajuan').select('*').eq('id', id).single(),
       supabase.from('pengajuan_items').select('*').eq('pengajuan_id', id).order('urutan'),
       supabase.from('pengajuan_penerima').select('*').eq('pengajuan_id', id),
       supabase.from('pengajuan_attachments').select('*').eq('pengajuan_id', id),
-      supabase.from('subkategori_pengajuan').select('nama').order('created_at'),
     ])
 
     const data = p.data
@@ -71,16 +75,8 @@ export default function EditPengajuanPage() {
     setMetodeBayar(data.metode_pembayaran || 'Transfer')
     setCatatan(data.catatan || '')
 
-    // Subkategori
-    const subList = sub.data?.map(d => d.nama) || []
-    setSubkategoriList(subList)
-    if (data.subkategori && subList.includes(data.subkategori)) {
-      setSubkategori(data.subkategori)
-      setIsLainnya(false)
-    } else if (data.subkategori) {
-      setIsLainnya(true)
-      setLainnyaText(data.subkategori)
-    }
+    // Subkategori tersimpan dipakai selama judul & item tidak diubah
+    setAwalSub({ judul: data.judul || '', items: (i.data || []).map(it => it.uraian), subkategori: data.subkategori })
 
     // Items
     setItems((i.data || []).map(item => ({
@@ -100,23 +96,18 @@ export default function EditPengajuanPage() {
       atas_nama: p.atas_nama || '',
     })))
     if ((pn.data || []).length === 0) {
-      setPenerima([{ nama_penerima: '', bank: '', no_rekening: '', atas_nama: '' }])
+      setPenerima([{ ...REKENING_KOSONG }])
     }
 
     setExistingAttachments(a.data || [])
     setLoading(false)
   }
 
-  function handleSubkategoriChange(val) {
-    if (val === 'lainnya') { setIsLainnya(true); setSubkategori('') }
-    else { setIsLainnya(false); setSubkategori(val) }
-  }
-
   function addItem() { setItems([...items, { uraian: '', qty: 1, satuan: 'Pcs', harga_satuan: 0 }]) }
   function removeItem(idx) { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx)) }
   function updateItem(idx, field, value) { const u = [...items]; u[idx][field] = value; setItems(u) }
 
-  function addPenerima() { setPenerima([...penerima, { nama_penerima: '', bank: '', no_rekening: '', atas_nama: '' }]) }
+  function addPenerima() { setPenerima([...penerima, { ...REKENING_KOSONG }]) }
   function removePenerima(idx) { if (penerima.length === 1) return; setPenerima(penerima.filter((_, i) => i !== idx)) }
   function updatePenerima(idx, field, value) { const u = [...penerima]; u[idx][field] = value; setPenerima(u) }
 
@@ -140,21 +131,16 @@ export default function EditPengajuanPage() {
 
   async function handleSubmit() {
     if (!judul.trim()) { setError('Judul pengajuan wajib diisi'); return }
-    const finalSubkategori = isLainnya ? lainnyaText.trim() : subkategori
-    if (!finalSubkategori) { setError('Subkategori wajib diisi'); return }
     if (items.some(i => !i.uraian.trim())) { setError('Semua uraian item wajib diisi'); return }
 
     setSubmitting(true)
     setError(null)
 
     try {
-      // Upsert subkategori baru kalau lainnya
-      if (isLainnya && lainnyaText.trim()) {
-        await supabase.from('subkategori_pengajuan').upsert({ nama: lainnyaText.trim() }, { onConflict: 'nama' })
-      }
+      const finalSubkategori = await subOtomatis.pastikan()
 
       // Update pengajuan — kode_surat tidak berubah
-      const { error: pErr } = await supabase.from('pengajuan').update({
+      const { data: pUpdated, error: pErr } = await supabase.from('pengajuan').update({
         judul,
         tipe,
         subkategori: finalSubkategori,
@@ -165,9 +151,10 @@ export default function EditPengajuanPage() {
         submitted_at: new Date().toISOString(),
         rejection_reason: null,
         rejection_type: null,
-      }).eq('id', id)
+      }).eq('id', id).eq('status', pengajuan.status).select('id')
 
       if (pErr) throw pErr
+      if (!pUpdated || pUpdated.length === 0) throw new Error('Pengajuan ini sudah tidak bisa diubah (statusnya berubah). Muat ulang halaman.')
 
       // Replace items: delete all lama, insert baru
       await supabase.from('pengajuan_items').delete().eq('pengajuan_id', id)
@@ -185,7 +172,7 @@ export default function EditPengajuanPage() {
 
       // Replace penerima: delete all lama, insert baru
       await supabase.from('pengajuan_penerima').delete().eq('pengajuan_id', id)
-      const penerimaToInsert = penerima.filter(p => p.nama_penerima.trim())
+      const penerimaToInsert = rapikanRekening(penerima)
       if (penerimaToInsert.length > 0) {
         await supabase.from('pengajuan_penerima').insert(
           penerimaToInsert.map(({ id: _, ...rest }) => ({ ...rest, pengajuan_id: id }))
@@ -248,6 +235,7 @@ export default function EditPengajuanPage() {
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
+  if (!canEditPengajuan(profile?.id, pengajuan)) return <BlockedPage onBack={() => navigate(`/pengajuan/${id}`)} text="Pengajuan ini tidak bisa diubah. Hanya pengaju yang bisa mengubah, dan hanya saat statusnya Perlu Revisi atau Ditahan." />
 
   return (
     <div style={{ background: '#F8F8F8', minHeight: '100vh', width: '100%', boxSizing: 'border-box' }}>
@@ -266,8 +254,8 @@ export default function EditPengajuanPage() {
         boxSizing: 'border-box',
         width: '100%',
       }}>
-        <button onClick={() => navigate(`/pengajuan/${id}`)}
-          style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1, flexShrink: 0 }}>
+        <button onClick={() => navigate(`/pengajuan/${id}`)} aria-label="Kembali"
+          style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>
           ←
         </button>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Edit Pengajuan</div>
@@ -308,11 +296,7 @@ export default function EditPengajuanPage() {
         <div style={cardStyle}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 16 }}>Informasi Pengajuan</div>
 
-          <div className="form-group">
-            <label className="form-label">Judul Pengajuan *</label>
-            <input className="form-input" placeholder="Contoh: Kebutuhan Kandang Service Truk"
-              value={judul} onChange={e => setJudul(e.target.value)} />
-          </div>
+          <JudulField value={judul} onChange={setJudul} />
 
           <div className="form-group">
             <label className="form-label">Tipe Pengajuan *</label>
@@ -333,21 +317,7 @@ export default function EditPengajuanPage() {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Subkategori *</label>
-            <select className="form-input"
-              value={isLainnya ? 'lainnya' : subkategori}
-              onChange={e => handleSubkategoriChange(e.target.value)}>
-              <option value="">Pilih subkategori</option>
-              {subkategoriList.map(s => <option key={s} value={s}>{s}</option>)}
-              <option value="lainnya">Lainnya (ketik baru)</option>
-            </select>
-            {isLainnya && (
-              <input className="form-input" placeholder="Ketik subkategori baru"
-                value={lainnyaText} onChange={e => setLainnyaText(e.target.value)}
-                style={{ marginTop: 8 }} />
-            )}
-          </div>
+          <SubkategoriOtomatis status={subOtomatis.status} subkategori={subOtomatis.subkategori} />
 
           <div className="form-group">
             <label className="form-label">Metode Pembayaran</label>
@@ -412,8 +382,7 @@ export default function EditPengajuanPage() {
               </div>
 
               {items.length > 1 && (
-                <button onClick={() => removeItem(idx)}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+                <div style={{ position: 'absolute', top: 2, right: 2 }}><DeleteButton label={`Hapus item ${idx + 1}`} onConfirm={() => removeItem(idx)} /></div>
               )}
             </div>
           ))}
@@ -425,49 +394,8 @@ export default function EditPengajuanPage() {
         </div>
 
         {/* Penerima */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Penerima Pembayaran</div>
-              <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Rekening tujuan transfer</div>
-            </div>
-            <button onClick={addPenerima}
-              style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-              + Tambah
-            </button>
-          </div>
-
-          {penerima.map((p, idx) => (
-            <div key={idx} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 10, position: 'relative' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Nama Penerima</label>
-                  <input className="form-input" placeholder="Nama vendor / supplier"
-                    value={p.nama_penerima} onChange={e => updatePenerima(idx, 'nama_penerima', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Bank</label>
-                  <input className="form-input" placeholder="BCA / Mandiri / BRI"
-                    value={p.bank} onChange={e => updatePenerima(idx, 'bank', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">No. Rekening</label>
-                  <input className="form-input" placeholder="Nomor rekening"
-                    value={p.no_rekening} onChange={e => updatePenerima(idx, 'no_rekening', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Atas Nama</label>
-                  <input className="form-input" placeholder="Nama pemilik rekening"
-                    value={p.atas_nama} onChange={e => updatePenerima(idx, 'atas_nama', e.target.value)} />
-                </div>
-              </div>
-              {penerima.length > 1 && (
-                <button onClick={() => removePenerima(idx)}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
-              )}
-            </div>
-          ))}
-        </div>
+        {/* Rekening tujuan: urutan & label dari lib/rekening.js */}
+        <RekeningTujuanFields penerima={penerima} onAdd={addPenerima} onRemove={removePenerima} onUpdate={updatePenerima} isMobile={isMobile} cardStyle={cardStyle} />
 
         {/* Attachments */}
         <div style={cardStyle} onPaste={handlePaste}>
@@ -489,8 +417,7 @@ export default function EditPengajuanPage() {
                   <div style={{ fontSize: 10, color: '#999' }}>File lama</div>
                 </div>
               </div>
-              <button onClick={() => removeExistingAttachment(a.id)}
-                style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, flexShrink: 0, marginLeft: 8 }}>×</button>
+              <DeleteButton label="Hapus lampiran" style={{ flexShrink: 0, marginLeft: 8 }} onConfirm={() => removeExistingAttachment(a.id)} />
             </div>
           ))}
 
@@ -504,8 +431,7 @@ export default function EditPengajuanPage() {
                   <div style={{ fontSize: 11, color: '#999' }}>{(file.size / 1024).toFixed(1)} KB</div>
                 </div>
               </div>
-              <button onClick={() => removeNewAttachment(idx)}
-                style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, flexShrink: 0, marginLeft: 8 }}>×</button>
+              <DeleteButton label="Hapus lampiran" style={{ flexShrink: 0, marginLeft: 8 }} onConfirm={() => removeNewAttachment(idx)} />
             </div>
           ))}
 
@@ -539,6 +465,15 @@ export default function EditPengajuanPage() {
           {submitting ? 'Menyimpan...' : 'Submit Ulang'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function BlockedPage({ text, onBack }) {
+  return (
+    <div style={{ padding: 40, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, marginBottom: 16 }}>{text}</div>
+      <button onClick={onBack} className="btn-primary" style={{ width: 'auto', padding: '12px 20px' }}>Kembali ke pengajuan</button>
     </div>
   )
 }

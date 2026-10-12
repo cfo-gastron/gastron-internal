@@ -3,8 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
+import DeleteButton from '../components/DeleteButton'
+import RekeningTujuanFields from '../components/RekeningTujuanFields'
+import { REKENING_KOSONG, rapikanRekening } from '../lib/rekening'
+import SubkategoriOtomatis from '../components/SubkategoriOtomatis'
+import { useSubkategoriOtomatis } from '../hooks/useSubkategoriOtomatis'
+import JudulField from '../components/JudulField'
 
-const ROMAN_MONTHS = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII']
 
 const DIVISION_MAP = {
   operational: 'OPR', procurement: 'PRC', corporate_secretary: 'ADM',
@@ -18,40 +23,8 @@ const TIPE_OPTIONS = [
   { value: 'reimbursement', label: 'Reimbursement' },
 ]
 
-// Penjelasan per subkategori
-const SUBKATEGORI_INFO = {
-  'Upah, Bensin, Parkir, Tol Kendaraan': 'Biaya perjalanan harian driver atau teknisi — bensin, tol, parkir, dan upah harian',
-  'Operasional Kandang': 'Kebutuhan tim teknisi yang harus berangkat ke kandang — termasuk mob to mob dan recall PRS',
-  'Pemeliharaan Alat': 'Servis atau perbaikan alat-alat yang ada di kandang',
-  'Pemeliharaan Kendaraan': 'Servis, ganti oli, ban, atau perbaikan kendaraan operasional',
-  'Marketing/Mobilisasi Operasional': 'Khusus untuk keperluan Pak Insan & Fajar ke kandang',
-  'Pembelian Alat': 'Beli alat baru untuk operasional — tools, perlengkapan teknis, dll',
-  'Pembelian Aset': 'Untuk pembelian aset yang jumlahnya besar — kayak DP truk atau pembuatan GTM',
-  'Perjalanan Dinas': 'Perjalanan resmi ke luar kota untuk keperluan bisnis',
-  'Perlengkapan Kantor': 'Kebutuhan kantor — ATK, peralatan, listrik, wifi, dll',
-}
-
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
-}
-
-function DeleteButton({ onConfirm, style = {} }) {
-  const [confirming, setConfirming] = useState(false)
-  if (confirming) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 12, color: '#C0272D', fontWeight: 500 }}>Hapus?</span>
-        <button onClick={() => { setConfirming(false); onConfirm() }}
-          style={{ background: '#C0272D', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Ya</button>
-        <button onClick={() => setConfirming(false)}
-          style={{ background: '#F5F5F5', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
-      </div>
-    )
-  }
-  return (
-    <button onClick={() => setConfirming(true)}
-      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1, ...style }}>×</button>
-  )
 }
 
 export default function FormPengajuanPage() {
@@ -61,45 +34,29 @@ export default function FormPengajuanPage() {
 
   const [judul, setJudul] = useState('')
   const [tipe, setTipe] = useState('kebutuhan')
-  const [subkategori, setSubkategori] = useState('')
-  const [subkategoriList, setSubkategoriList] = useState([])
-  const [isLainnya, setIsLainnya] = useState(false)
-  const [lainnyaText, setLainnyaText] = useState('')
-  const [showSubInfo, setShowSubInfo] = useState(false)
   const [metodeBayar, setMetodeBayar] = useState('Transfer')
   const [catatan, setCatatan] = useState('')
   const [items, setItems] = useState([{ uraian: '', qty: 1, satuan: 'Pcs', harga_satuan: 0 }])
-  const [penerima, setPenerima] = useState([{ nama_penerima: '', bank: '', no_rekening: '', atas_nama: '' }])
+  const [penerima, setPenerima] = useState([{ ...REKENING_KOSONG }])
   const [attachments, setAttachments] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const division = DIVISION_MAP[profile?.role] || 'OPR'
   const total = items.reduce((s, i) => s + (Number(i.qty) * Number(i.harga_satuan)), 0)
-  const subInfo = SUBKATEGORI_INFO[subkategori]
+  const subOtomatis = useSubkategoriOtomatis(judul, items.map(i => i.uraian))
 
   useEffect(() => {
-    fetchSubkategori()
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  async function fetchSubkategori() {
-    const { data } = await supabase.from('subkategori_pengajuan').select('nama').order('nama')
-    setSubkategoriList(data?.map(d => d.nama) || [])
-  }
-
-  function handleSubkategoriChange(val) {
-    if (val === 'lainnya') { setIsLainnya(true); setSubkategori(''); setShowSubInfo(false) }
-    else { setIsLainnya(false); setSubkategori(val); setShowSubInfo(false) }
-  }
-
   function addItem() { setItems([...items, { uraian: '', qty: 1, satuan: 'Pcs', harga_satuan: 0 }]) }
   function removeItem(idx) { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx)) }
   function updateItem(idx, field, value) { const u = [...items]; u[idx][field] = value; setItems(u) }
 
-  function addPenerima() { setPenerima([...penerima, { nama_penerima: '', bank: '', no_rekening: '', atas_nama: '' }]) }
+  function addPenerima() { setPenerima([...penerima, { ...REKENING_KOSONG }]) }
   function removePenerima(idx) { if (penerima.length === 1) return; setPenerima(penerima.filter((_, i) => i !== idx)) }
   function updatePenerima(idx, field, value) { const u = [...penerima]; u[idx][field] = value; setPenerima(u) }
 
@@ -118,19 +75,16 @@ export default function FormPengajuanPage() {
 
   async function handleSubmit() {
     if (!judul.trim()) { setError('Judul pengajuan wajib diisi'); return }
-    const finalSubkategori = isLainnya ? lainnyaText.trim() : subkategori
-    if (!finalSubkategori) { setError('Subkategori wajib diisi'); return }
     if (items.some(i => !i.uraian.trim())) { setError('Semua uraian item wajib diisi'); return }
 
     setLoading(true); setError(null)
     try {
-      if (isLainnya && lainnyaText.trim()) {
-        await supabase.from('subkategori_pengajuan').upsert({ nama: lainnyaText.trim() }, { onConflict: 'nama' })
-      }
+      // Subkategori ditentukan otomatis dari judul & item (tidak dipilih pengaju)
+      const finalSubkategori = await subOtomatis.pastikan()
 
-      const now = new Date()
-      const { data: counterData } = await supabase.rpc('generate_kode_surat', { p_division: division })
-      const kodeSurat = counterData || `GTR-${division}-001-${ROMAN_MONTHS[now.getMonth()]}-${now.getFullYear()}`
+      // Kode surat wajib dari server. Jangan pakai kode cadangan: bisa dobel dengan pengajuan lain.
+      const { data: kodeSurat, error: kodeErr } = await supabase.rpc('generate_kode_surat', { p_division: division })
+      if (kodeErr || !kodeSurat) throw new Error('Gagal membuat kode surat. Periksa koneksi, lalu kirim lagi.')
 
       const { data: pengajuan, error: pErr } = await supabase.from('pengajuan').insert({
         kode_surat: kodeSurat, judul, division, tipe,
@@ -143,19 +97,22 @@ export default function FormPengajuanPage() {
       }).select().single()
       if (pErr) throw pErr
 
-      await supabase.from('pengajuan_items').insert(
+      const { error: itemsErr } = await supabase.from('pengajuan_items').insert(
         items.map((item, idx) => ({
           pengajuan_id: pengajuan.id, urutan: idx + 1,
           uraian: item.uraian, qty: Number(item.qty),
           satuan: item.satuan, harga_satuan: Number(item.harga_satuan),
         }))
       )
+      if (itemsErr) throw new Error(`Pengajuan ${kodeSurat} tersimpan, tapi item gagal disimpan (${itemsErr.message}). Hubungi Finance.`)
 
-      const penerimaToInsert = penerima.filter(p => p.nama_penerima.trim())
+      const penerimaToInsert = rapikanRekening(penerima)
       if (penerimaToInsert.length > 0) {
-        await supabase.from('pengajuan_penerima').insert(penerimaToInsert.map(p => ({ ...p, pengajuan_id: pengajuan.id })))
+        const { error: penErr } = await supabase.from('pengajuan_penerima').insert(penerimaToInsert.map(p => ({ ...p, pengajuan_id: pengajuan.id })))
+        if (penErr) throw new Error(`Pengajuan ${kodeSurat} tersimpan, tapi data penerima gagal disimpan (${penErr.message}). Hubungi Finance.`)
       }
 
+      const gagalUpload = []
       for (const file of attachments) {
         const ext = file.name?.split('.').pop() || 'jpg'
         const fileName = `${pengajuan.id}/${Date.now()}.${ext}`
@@ -167,8 +124,9 @@ export default function FormPengajuanPage() {
             file_url: urlData.publicUrl, file_type: file.type,
             file_size: file.size, uploaded_by: profile.id,
           })
-        }
+        } else gagalUpload.push(file.name || 'gambar')
       }
+      if (gagalUpload.length > 0) alert(`Pengajuan ${kodeSurat} terkirim, tapi lampiran gagal diunggah: ${gagalUpload.join(', ')}. Tambahkan lagi lewat Finance.`)
 
       await supabase.from('approval_logs').insert({
         pengajuan_id: pengajuan.id, action: 'submitted',
@@ -195,7 +153,7 @@ export default function FormPengajuanPage() {
 
       <div style={{ background: '#fff', borderBottom: '1px solid #F0F0F0', padding: isMobile ? '14px 16px' : '16px 32px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 40, boxSizing: 'border-box', width: '100%' }}>
         <button onClick={() => navigate('/dashboard')}
-          style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1, flexShrink: 0 }}>←</button>
+          aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Buat Pengajuan</div>
         <div style={{ marginLeft: 'auto', background: '#FFF0F0', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: '#C0272D' }}>{division}</div>
       </div>
@@ -209,16 +167,7 @@ export default function FormPengajuanPage() {
         <div style={cardStyle}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 16 }}>Informasi Pengajuan</div>
 
-          {/* Judul — dengan keterangan konteks */}
-          <div className="form-group">
-            <label className="form-label">Judul Pengajuan *</label>
-            <input className="form-input"
-              placeholder="Tulis konteks pengajuannya — contoh: Service Truk Euro 2 Kandang Asrul, Mob to Mob Kandang Rahayu"
-              value={judul} onChange={e => setJudul(e.target.value)} />
-            <div style={{ fontSize: 11, color: '#999', marginTop: 6 }}>
-              💡 Tulis konteks spesifiknya di sini — kandang mana, untuk apa, siapa yang terlibat
-            </div>
-          </div>
+          <JudulField value={judul} onChange={setJudul} />
 
           {/* Tipe */}
           <div className="form-group">
@@ -233,38 +182,8 @@ export default function FormPengajuanPage() {
             </div>
           </div>
 
-          {/* Subkategori + accordion penjelasan */}
-          <div className="form-group">
-            <label className="form-label">Subkategori *</label>
-            <select className="form-input" value={isLainnya ? 'lainnya' : subkategori} onChange={e => handleSubkategoriChange(e.target.value)}>
-              <option value="">Pilih subkategori</option>
-              {subkategoriList.map(s => <option key={s} value={s}>{s}</option>)}
-              <option value="lainnya">Lainnya (ketik baru)</option>
-            </select>
-
-            {/* Accordion penjelasan */}
-            {subInfo && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowSubInfo(!showSubInfo)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#1565C0' }}>
-                  <span style={{ fontSize: 10, transition: 'transform 0.2s', display: 'inline-block', transform: showSubInfo ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                  {showSubInfo ? 'Sembunyikan penjelasan' : 'Apa itu ' + subkategori + '?'}
-                </button>
-                {showSubInfo && (
-                  <div style={{ marginTop: 8, background: '#EEF4FF', border: '1px solid #BBDEFB', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#1565C0', lineHeight: 1.6 }}>
-                    {subInfo}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isLainnya && (
-              <input className="form-input" placeholder="Ketik subkategori baru"
-                value={lainnyaText} onChange={e => setLainnyaText(e.target.value)} style={{ marginTop: 8 }} />
-            )}
-          </div>
+          {/* Subkategori: otomatis dari judul & item */}
+          <SubkategoriOtomatis status={subOtomatis.status} subkategori={subOtomatis.subkategori} />
 
           {/* Metode bayar */}
           <div className="form-group">
@@ -297,7 +216,7 @@ export default function FormPengajuanPage() {
             <div key={idx} style={{ background: '#FAFAFA', borderRadius: 10, padding: '14px', marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: '#999' }}>Item #{idx + 1}</div>
-                {items.length > 1 && <DeleteButton onConfirm={() => removeItem(idx)} />}
+                {items.length > 1 && <DeleteButton label={`Hapus item ${idx + 1}`} onConfirm={() => removeItem(idx)} />}
               </div>
 
               <div style={{ marginBottom: 10 }}>
@@ -337,51 +256,8 @@ export default function FormPengajuanPage() {
           </div>
         </div>
 
-        {/* Penerima Pembayaran */}
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Penerima Pembayaran</div>
-              <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>Rekening tujuan transfer</div>
-            </div>
-            <button onClick={addPenerima}
-              style={{ background: '#F5F5F5', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-              + Tambah
-            </button>
-          </div>
-
-          {penerima.map((p, idx) => (
-            <div key={idx} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 10 }}>
-              {penerima.length > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                  <DeleteButton onConfirm={() => removePenerima(idx)} />
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Nama Penerima</label>
-                  <input className="form-input" placeholder="Nama vendor / supplier"
-                    value={p.nama_penerima} onChange={e => updatePenerima(idx, 'nama_penerima', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Bank</label>
-                  <input className="form-input" placeholder="BCA / Mandiri / BRI"
-                    value={p.bank} onChange={e => updatePenerima(idx, 'bank', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">No. Rekening</label>
-                  <input className="form-input" placeholder="Nomor rekening"
-                    value={p.no_rekening} onChange={e => updatePenerima(idx, 'no_rekening', e.target.value)} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Atas Nama</label>
-                  <input className="form-input" placeholder="Nama pemilik rekening"
-                    value={p.atas_nama} onChange={e => updatePenerima(idx, 'atas_nama', e.target.value)} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* Rekening tujuan: urutan & label dari lib/rekening.js */}
+        <RekeningTujuanFields penerima={penerima} onAdd={addPenerima} onRemove={removePenerima} onUpdate={updatePenerima} isMobile={isMobile} cardStyle={cardStyle} />
 
         {/* Lampiran */}
         <div style={cardStyle} onPaste={handlePaste}>
@@ -404,7 +280,7 @@ export default function FormPengajuanPage() {
                   <div style={{ fontSize: 11, color: '#999' }}>{(file.size / 1024).toFixed(1)} KB</div>
                 </div>
               </div>
-              <DeleteButton onConfirm={() => removeAttachment(idx)} />
+              <DeleteButton label="Hapus lampiran" onConfirm={() => removeAttachment(idx)} />
             </div>
           ))}
         </div>

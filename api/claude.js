@@ -1,9 +1,14 @@
-// api/claude.js — Proxy ke Anthropic API. API key disimpen aman di server (env var).
+// api/claude.js — Proxy ke Anthropic API. API key disimpan aman di server (env var).
+// Wajib login (dulu terbuka: siapa pun yang tahu URL bisa memakai API key).
+import { getUser } from './_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  const user = await getUser(req)
+  if (!user) return res.status(401).json({ error: 'Harus login' })
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {

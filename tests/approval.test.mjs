@@ -130,3 +130,59 @@ test('Tidak ada notif info kosong kalau semua penerima adalah approver', () => {
   const n = buildNotifs({ kind: 'pengajuan', item: { id: 'x', judul: 'a' }, newStatus: 'approved_step1', info: { title: 'i', body: 'b' }, relevantIds: ['U-cfo'], approverIds: ['U-cfo'] })
   assert.equal(n.length, 1)
 })
+
+// ---- Putaran 1: aturan ubah pengajuan, akses LPJ, giliran saya ----
+import { canEditPengajuan, canAccessLpj, isMyTurnPengajuan, isMyTurnLpj, needsLpj } from '../src/lib/approval.js'
+
+test('Ubah pengajuan: hanya pengaju, hanya saat revisi/ditahan', () => {
+  for (const s of STATUSES) {
+    assert.equal(canEditPengajuan('U1', { submitted_by: 'U1', status: s }), ['revision', 'hold'].includes(s), s)
+    assert.equal(canEditPengajuan('U2', { submitted_by: 'U1', status: s }), false, s)
+  }
+  assert.equal(canEditPengajuan(undefined, { submitted_by: undefined, status: 'revision' }), false)
+})
+
+test('Akses LPJ: setelah transfer, bukan reimbursement/Trip, oleh pengaju/Finance/CFO', () => {
+  const p = { submitted_by: 'U1', status: 'approved_ceo', tipe: 'kebutuhan', subkategori: 'Pemeliharaan Alat' }
+  assert.ok(canAccessLpj('U1', 'operational', p))
+  assert.ok(canAccessLpj('X', 'cfo', p))
+  assert.ok(canAccessLpj('X', 'finance', p))
+  for (const r of ['coo', 'cao', 'ceo', 'procurement']) assert.equal(canAccessLpj('X', r, p), false, r)
+  assert.equal(canAccessLpj('U1', 'operational', { ...p, status: 'approved_cfo' }), false)
+  assert.equal(canAccessLpj('U1', 'operational', { ...p, tipe: 'reimbursement' }), false)
+  assert.equal(canAccessLpj('U1', 'operational', { ...p, subkategori: 'Trip Operasional' }), false)
+  assert.equal(needsLpj({ tipe: 'reimbursement' }), false)
+})
+
+test('Giliran saya = role utama (sama dengan penerima notif), cadangan tidak termasuk', () => {
+  for (const s of STATUSES) for (const d of DIVISIONS) for (const r of ROLES)
+    assert.equal(isMyTurnPengajuan(r, s, d), pengajuanApprovers(s, d).utama.includes(r), `${r} ${s} ${d}`)
+  assert.equal(isMyTurnPengajuan('cfo', 'approved_cfo', 'OPR'), false)
+  assert.equal(isMyTurnLpj('cfo', 'submitted'), false)
+  assert.equal(isMyTurnLpj('cfo', 'approved_finance'), true)
+  assert.equal(isMyTurnLpj('finance', 'submitted'), true)
+})
+
+// ---- Putaran 3: batalkan approval ----
+import { rencanaBatalApproval } from '../src/lib/approval.js'
+
+test('Batal approval: hanya yang approve tahap terakhir, final CEO tidak bisa', () => {
+  const p = (x) => ({ division: 'OPR', step1_approved_by: 'COO', cfo_approved_by: 'CFO', ...x })
+  assert.deepEqual(rencanaBatalApproval('COO', p({ status: 'approved_step1', cfo_approved_by: null }))?.ke, 'submitted')
+  assert.equal(rencanaBatalApproval('CFO', p({ status: 'approved_step1', cfo_approved_by: null })), null)
+  assert.equal(rencanaBatalApproval('CFO', p({ status: 'approved_cfo' }))?.ke, 'approved_step1')
+  assert.equal(rencanaBatalApproval('COO', p({ status: 'approved_cfo' })), null)
+  assert.equal(rencanaBatalApproval('CFO', p({ status: 'approved_ceo' })), null)
+  assert.equal(rencanaBatalApproval('CFO', p({ status: 'submitted' })), null)
+  const fin = rencanaBatalApproval('CFO', { division: 'FIN', status: 'approved_cfo', step1_approved_by: 'CFO', cfo_approved_by: 'CFO' })
+  assert.equal(fin.ke, 'submitted')
+  assert.deepEqual(Object.keys(fin.kosongkan).sort(), ['approved_cfo_at', 'approved_step1_at', 'cfo_approved_by', 'step1_approved_by'])
+  assert.equal(rencanaBatalApproval(undefined, p({ status: 'approved_cfo', cfo_approved_by: undefined })), null)
+})
+
+test('Setiap batal approval mengembalikan ke status yang punya approver utama (tidak ada pengajuan "yatim")', () => {
+  for (const d of DIVISIONS) for (const st of ['approved_step1', 'approved_cfo']) {
+    const r = rencanaBatalApproval('U', { division: d, status: st, step1_approved_by: 'U', cfo_approved_by: 'U' })
+    if (r) assert.equal(pengajuanApprovers(r.ke, d).utama.length, 1, `${d} ${st} -> ${r.ke}`)
+  }
+})

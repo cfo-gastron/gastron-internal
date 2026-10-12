@@ -4,46 +4,12 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
-import { canApprovePengajuan } from '../lib/approval'
-
-const STATUS_LABEL = {
-  draft: 'Draft',
-  submitted: 'Menunggu Review',
-  approved_step1: 'Menunggu CFO',
-  approved_cfo: 'Menunggu CEO',
-  approved_ceo: 'Transferred',
-  revision: 'Perlu Revisi',
-  hold: 'Ditahan',
-  rejected: 'Ditolak',
-}
-
-const STATUS_CLASS = {
-  draft: 'badge-pending',
-  submitted: 'badge-pending',
-  approved_step1: 'badge-step1',
-  approved_cfo: 'badge-cfo',
-  approved_ceo: 'badge-approved',
-  revision: 'badge-revision',
-  hold: 'badge-hold',
-  rejected: 'badge-rejected',
-}
-
-// Mapping subkategori pengajuan → cashflow
-const CASHFLOW_MAPPING = {
-  'Upah, Bensin, Parkir, Tol Kendaraan': { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex1', subcat_name: 'Upah, Bensin, Parkir, Tol Kendaraan' },
-  'Operasional Kandang':                 { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex2', subcat_name: 'Operasional Kandang' },
-  'Pemeliharaan Alat':                   { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex6', subcat_name: 'Pemeliharaan Alat' },
-  'Pemeliharaan Kendaraan':              { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex5', subcat_name: 'Pemeliharaan Kendaraan' },
-  'Marketing/Mobilisasi Operasional':    { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex4', subcat_name: 'Marketing/Mobilisasi Operasional' },
-  'Pembelian Alat':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex2', subcat_name: 'Pembelian Alat' },
-  'Pembelian Aset':                      { cat_id: 'd_capex', cat_name: 'CapEx', subcat_id: 'd_capex1', subcat_name: 'Pembelian Aset' },
-  'Perjalanan Dinas':                    { cat_id: 'd_corp', cat_name: 'Corporate Support', subcat_id: 'd_corp4', subcat_name: 'Perjalanan Dinas' },
-  'Perlengkapan Kantor':                 { cat_id: 'd_off', cat_name: 'Office', subcat_id: 'd_off2', subcat_name: 'Perlengkapan Kantor' },
-}
-
-function getCashflowCategory(subkategori) {
-  return CASHFLOW_MAPPING[subkategori] || { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
-}
+import { canApprovePengajuan, canAccessLpj as canAccessLpjRule, canChangeSubkategori, rencanaBatalApproval } from '../lib/approval'
+import { BELUM_DIKATEGORIKAN } from '../lib/subkategori'
+import { REKENING_FIELDS, REKENING_JUDUL, labelRekening } from '../lib/rekening'
+import { insertPengajuanToCashflow } from '../lib/cashflow'
+import { STATUS_LABEL, STATUS_CLASS } from '../lib/status'
+import BrandMark from '../components/BrandMark'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -99,6 +65,9 @@ export default function DetailPengajuanPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [archiving, setArchiving] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const [ubahSub, setUbahSub] = useState(null) // null | { list, pilihan, menyimpan, error }
+  const [batal, setBatal] = useState(null) // null | { alasan, error }
 
   const canArchive = ['cfo', 'finance', 'ceo'].includes(profile?.role)
   const isOwner = pengajuan?.submitted_by === profile?.id
@@ -143,13 +112,7 @@ export default function DetailPengajuanPage() {
   }
 
   function canAccessLpj() {
-    if (!pengajuan) return false
-    if (pengajuan.status !== 'approved_ceo') return false
-    if (pengajuan.tipe === 'reimbursement' || pengajuan.subkategori === 'Trip Operasional') return false
-    const role = profile?.role
-    if (role === 'cfo' || role === 'finance') return true
-    if (pengajuan.submitted_by === profile?.id) return true
-    return false
+    return canAccessLpjRule(profile?.id, profile?.role, pengajuan)
   }
 
   function canResubmit() {
@@ -193,35 +156,31 @@ export default function DetailPengajuanPage() {
       newStatus = 'approved_ceo'
     }
 
-    await supabase.from('pengajuan').update(updateData).eq('id', id)
+    setActionError('')
+    // Update hanya kalau status belum diubah orang lain (mencegah approve dobel / cashflow dobel)
+    const { data: updated, error: updateError } = await supabase.from('pengajuan')
+      .update(updateData).eq('id', id).eq('status', status).select('id')
+    if (updateError || !updated || updated.length === 0) {
+      setActionError(updateError
+        ? `Gagal menyimpan: ${updateError.message}. Tidak ada yang berubah, coba lagi.`
+        : 'Pengajuan ini sudah diproses orang lain. Halaman dimuat ulang.')
+      setShowFinalApproveModal(false)
+      await fetchDetail()
+      setActionLoading(false)
+      return
+    }
     await supabase.from('approval_logs').insert({
       pengajuan_id: id, action: 'approved',
       action_by: profile.id, role_at_time: profile.role,
       catatan: getLogCatatan(status, profile.full_name),
     })
 
-    // Insert ke cashflow kalau final approve (CEO)
+    // Masuk ke cashflow kalau final approve (CEO). Jalur bersama, tidak pernah dobel.
     if (newStatus === 'approved_ceo') {
-      const mapping = getCashflowCategory(pengajuan.subkategori)
-      const { error: cashflowError } = await supabase.from('cashflow_transactions').insert({
-        name: pengajuan.judul,
-        amount: Math.round(Number(pengajuan.total_pengajuan)),
-        date: new Date().toISOString().split('T')[0],
-        type: 'out',
-        account: 'utama',
-        cat_id: mapping.cat_id,
-        cat_name: mapping.cat_name,
-        subcat_id: mapping.subcat_id,
-        subcat_name: mapping.subcat_name,
-        is_est: false,
-        is_kemb: false,
-        linked_id: id,
-        notes: `Auto dari pengajuan ${pengajuan.kode_surat}`,
-        created_by: profile.id,
-      })
-      if (cashflowError) {
-        console.error('Gagal insert ke cashflow:', cashflowError)
-        alert(`Pengajuan udah di-approve, TAPI gagal masuk ke Cashflow (${cashflowError.message}). Tolong masukin manual di Cashflow app.`)
+      const cf = await insertPengajuanToCashflow({ ...pengajuan, id }, { createdBy: profile.id, notes: `Auto dari pengajuan ${pengajuan.kode_surat}` })
+      if (cf.error) {
+        console.error('Gagal insert ke cashflow:', cf.error)
+        setActionError(`Pengajuan sudah disetujui, TAPI gagal masuk ke Cashflow (${cf.error.message}). Masukkan lewat menu Sinkronisasi.`)
       }
     }
 
@@ -235,9 +194,17 @@ export default function DetailPengajuanPage() {
   async function handleReject() {
     if (!rejectReason.trim()) return
     setActionLoading(true)
-    await supabase.from('pengajuan').update({
+    setActionError('')
+    const { data: updated, error: updateError } = await supabase.from('pengajuan').update({
       status: rejectType, rejection_type: rejectType, rejection_reason: rejectReason,
-    }).eq('id', id)
+    }).eq('id', id).eq('status', pengajuan.status).select('id')
+    if (updateError || !updated || updated.length === 0) {
+      setActionError(updateError ? `Gagal menyimpan: ${updateError.message}. Coba lagi.` : 'Pengajuan ini sudah diproses orang lain. Halaman dimuat ulang.')
+      setShowRejectModal(false)
+      await fetchDetail()
+      setActionLoading(false)
+      return
+    }
     await supabase.from('approval_logs').insert({
       pengajuan_id: id, action: rejectType,
       action_by: profile.id, role_at_time: profile.role,
@@ -281,14 +248,69 @@ export default function DetailPengajuanPage() {
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
 
-  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive
+  const hasActions = canApprove() || canAccessLpj() || canResubmit() || canReleaseHold() || canArchive || !!actionError || !!rencanaBatalApproval(profile?.id, pengajuan)
   const penerimaUtama = penerima[0]
   const penerimaLabel = penerimaUtama
-    ? `${penerimaUtama.nama_penerima}${penerimaUtama.bank ? ` (${penerimaUtama.bank})` : ''}`
+    ? labelRekening(penerimaUtama)
     : '-'
+
+  async function mulaiUbahSubkategori() {
+    const { data } = await supabase.from('subkategori_pengajuan').select('nama').order('nama')
+    const list = (data || []).map(d => d.nama)
+    setUbahSub({ list, pilihan: list.includes(pengajuan.subkategori) ? pengajuan.subkategori : '', menyimpan: false, error: '' })
+  }
+
+  async function simpanSubkategori() {
+    if (!ubahSub.pilihan) { setUbahSub({ ...ubahSub, error: 'Pilih subkategori dulu' }); return }
+    setUbahSub({ ...ubahSub, menyimpan: true, error: '' })
+    const { data: updated, error } = await supabase.from('pengajuan').update({ subkategori: ubahSub.pilihan })
+      .eq('id', id).neq('status', 'approved_ceo').select('id')
+    if (error || !updated?.length) {
+      setUbahSub({ ...ubahSub, menyimpan: false, error: error ? `Gagal menyimpan: ${error.message}` : 'Tidak bisa diubah: dana sudah ditransfer.' })
+      return
+    }
+    setPengajuan(prev => ({ ...prev, subkategori: ubahSub.pilihan }))
+    setUbahSub(null)
+  }
+
+  // Batalkan approval sendiri (selama tahap berikutnya belum bertindak)
+  async function handleBatalApproval() {
+    const rencana = rencanaBatalApproval(profile?.id, pengajuan)
+    if (!rencana) return
+    if (!batal.alasan.trim()) {
+      setBatal({ ...batal, error: 'Tulis alasannya dulu' })
+      document.getElementById('alasan-batal')?.focus()
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    const { data: updated, error } = await supabase.from('pengajuan')
+      .update({ status: rencana.ke, ...rencana.kosongkan })
+      .eq('id', id).eq('status', rencana.dari).select('id')
+    if (error || !updated?.length) {
+      setActionError(error ? `Gagal membatalkan: ${error.message}` : 'Tidak bisa dibatalkan: tahap berikutnya sudah memproses pengajuan ini.')
+      setBatal(null); await fetchDetail(); setActionLoading(false)
+      return
+    }
+    const { error: logErr } = await supabase.from('approval_logs').insert({
+      pengajuan_id: id, action: 'approval_dibatalkan',
+      action_by: profile.id, role_at_time: profile.role, catatan: batal.alasan.trim(),
+    })
+    if (logErr) console.error('Gagal mencatat pembatalan di timeline:', logErr)
+    notifyPengajuanUpdate({ ...pengajuan, id }, rencana.ke, {
+      title: '↩️ Approval dibatalkan',
+      body: `"${pengajuan.judul}" — approval ${profile.full_name} dibatalkan, kembali ke ${STATUS_LABEL[rencana.ke]}. Alasan: ${batal.alasan.trim()}`,
+    })
+    setBatal(null)
+    await fetchDetail()
+    setActionLoading(false)
+  }
 
   const ActionButtons = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {actionError && (
+        <div role="alert" style={{ background: '#FFF0F0', border: '1px solid #F5C2C2', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#8B1A1F' }}>{actionError}</div>
+      )}
       {canApprove() && (
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setShowRejectModal(true)}
@@ -300,6 +322,13 @@ export default function DetailPengajuanPage() {
             {actionLoading ? 'Memproses...' : getApproveLabel(pengajuan.status)}
           </button>
         </div>
+      )}
+
+      {rencanaBatalApproval(profile?.id, pengajuan) && (
+        <button onClick={() => setBatal({ alasan: '', error: '' })} disabled={actionLoading}
+          style={{ width: '100%', padding: '13px', minHeight: 44, background: '#fff', border: '1.5px solid #E0E0E0', borderRadius: 12, fontSize: 14, fontWeight: 600, color: '#333', cursor: 'pointer', fontFamily: 'inherit' }}>
+          ↩ Batalkan approval saya
+        </button>
       )}
 
       {canResubmit() && (
@@ -356,13 +385,7 @@ export default function DetailPengajuanPage() {
 
       {!isMobile && (
         <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50, display: 'flex', flexDirection: 'column', padding: '24px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-            <img src="/logo-gastron.png" alt="Gastron" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}><span style={{ color: '#C0272D' }}>G</span>astron</div>
-              <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
-            </div>
-          </div>
+          <div style={{ marginBottom: 32 }}><BrandMark /></div>
           <button onClick={() => navigate('/dashboard')}
             style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             ⊞ Dashboard
@@ -374,11 +397,8 @@ export default function DetailPengajuanPage() {
 
         {isMobile ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>←</button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
-            </div>
+            <button onClick={() => navigate('/dashboard')} aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
+            <div style={{ flex: 1 }}><BrandMark compact /></div>
           </div>
         ) : (
           <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 12 }}>
@@ -410,6 +430,38 @@ export default function DetailPengajuanPage() {
               </div>
             ))}
           </div>
+
+          {/* Subkategori (ditebak otomatis; CFO/Finance bisa membetulkan sebelum transfer) */}
+          <div data-testid="subkategori-detail" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #F2F2F2' }}>
+            <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>Subkategori</div>
+            {!ubahSub ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: pengajuan.subkategori === BELUM_DIKATEGORIKAN ? '#8B1A1F' : '#111' }}>
+                  {pengajuan.subkategori || BELUM_DIKATEGORIKAN}
+                </div>
+                {canChangeSubkategori(profile?.role, pengajuan.status) && (
+                  <button onClick={mulaiUbahSubkategori}
+                    style={{ background: 'none', border: '1px solid #DDD', borderRadius: 8, padding: '6px 12px', minHeight: 32, fontSize: 12, color: '#333', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Ubah subkategori
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select className="form-input" aria-label="Pilih subkategori" value={ubahSub.pilihan}
+                  onChange={e => setUbahSub({ ...ubahSub, pilihan: e.target.value, error: '' })}
+                  style={{ flex: '1 1 220px', borderColor: ubahSub.error ? '#C0272D' : undefined }}>
+                  <option value="">Pilih subkategori</option>
+                  {ubahSub.list.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <button onClick={simpanSubkategori} disabled={ubahSub.menyimpan} className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }}>
+                  {ubahSub.menyimpan ? 'Menyimpan...' : 'Simpan subkategori'}
+                </button>
+                <button onClick={() => setUbahSub(null)} className="btn-secondary" style={{ width: 'auto', padding: '10px 16px' }}>Batal</button>
+                {ubahSub.error && <div role="alert" style={{ flexBasis: '100%', fontSize: 12, color: '#C0272D' }}>{ubahSub.error}</div>}
+              </div>
+            )}
+          </div>
           {pengajuan.catatan && (
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #F5F5F5' }}>
               <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>Catatan</div>
@@ -439,7 +491,7 @@ export default function DetailPengajuanPage() {
                       </div>
                       <div style={{ fontSize: 12, color: '#888' }}>{item.qty} {item.satuan} × {formatRp(item.harga_satuan)}</div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{formatRp(item.jumlah)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{formatRp(item.jumlah ?? Number(item.qty) * Number(item.harga_satuan))}</div>
                   </div>
                 </div>
               ))}
@@ -465,7 +517,7 @@ export default function DetailPengajuanPage() {
                     <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.qty}</td>
                     <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'center' }}>{item.satuan}</td>
                     <td style={{ padding: '12px 16px', fontSize: 13, color: '#555', textAlign: 'right' }}>{formatRp(item.harga_satuan)}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(item.jumlah)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#111', textAlign: 'right' }}>{formatRp(item.jumlah ?? Number(item.qty) * Number(item.harga_satuan))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -481,16 +533,11 @@ export default function DetailPengajuanPage() {
 
         {penerima.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Penerima Pembayaran</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>{REKENING_JUDUL}</div>
             {penerima.map((p) => (
               <div key={p.id} style={{ background: '#FAFAFA', borderRadius: 8, padding: '14px', marginBottom: 8 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12 }}>
-                  {[
-                    { label: 'Nama', value: p.nama_penerima },
-                    { label: 'Bank', value: p.bank },
-                    { label: 'No. Rekening', value: p.no_rekening },
-                    { label: 'Atas Nama', value: p.atas_nama },
-                  ].map(({ label, value }) => (
+                  {REKENING_FIELDS.map(f => ({ label: f.label, value: p[f.key] })).map(({ label, value }) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{label}</div>
                       <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>{value || '-'}</div>
@@ -525,10 +572,10 @@ export default function DetailPengajuanPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {logs.map((log) => (
                 <div key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: log.action === 'approved' ? '#2E7D32' : log.action === 'submitted' ? '#1565C0' : log.action === 'approval_dibatalkan' ? '#999' : '#C0272D', marginTop: 4, flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#111' }}>
-                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : 'Ditolak'}
+                      {log.action === 'submitted' ? 'Pengajuan disubmit' : log.action === 'approved' ? 'Disetujui' : log.action === 'approval_dibatalkan' ? 'Approval dibatalkan' : log.action === 'revision' ? 'Diminta revisi' : log.action === 'hold' ? 'Ditahan' : log.action === 'rejected' ? 'Ditolak' : log.action}
                       {log.user && <span style={{ color: '#999', fontWeight: 400 }}> oleh {log.user.full_name}</span>}
                     </div>
                     {log.catatan && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{log.catatan}</div>}
@@ -576,6 +623,35 @@ export default function DetailPengajuanPage() {
       )}
 
       {/* REJECT MODAL */}
+      {batal && (() => {
+        const rencana = rencanaBatalApproval(profile?.id, pengajuan)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
+            <div role="dialog" aria-label="Batalkan approval" style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '24px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 460 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8 }}>Batalkan approval kamu?</div>
+              <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6, marginBottom: 16 }}>
+                Pengajuan kembali ke <b>{rencana ? STATUS_LABEL[rencana.ke] : '-'}</b>. Tahap berikutnya tidak bisa approve sampai kamu approve lagi. Semua pihak terkait dapat notifikasi.
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="alasan-batal">Alasan *</label>
+                <textarea id="alasan-batal" className="form-input" rows={3} placeholder="Contoh: nominal perlu dicek ulang dengan vendor"
+                  value={batal.alasan} onChange={e => setBatal({ alasan: e.target.value, error: '' })}
+                  style={{ borderColor: batal.error ? '#C0272D' : undefined }} />
+                {batal.error && <div role="alert" style={{ fontSize: 12, color: '#C0272D', marginTop: 4 }}>{batal.error}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button onClick={() => setBatal(null)}
+                  style={{ flex: 1, padding: '13px', background: '#F5F5F5', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>Tidak jadi</button>
+                <button onClick={handleBatalApproval} disabled={actionLoading}
+                  style={{ flex: 1, padding: '13px', background: '#C0272D', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', opacity: actionLoading ? 0.7 : 1 }}>
+                  {actionLoading ? 'Memproses...' : 'Ya, batalkan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {showRejectModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, padding: isMobile ? '24px 20px' : 32, paddingBottom: isMobile ? 'max(40px, calc(28px + env(safe-area-inset-bottom)))' : 32, width: isMobile ? '100%' : 480 }}>

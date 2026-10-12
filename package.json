@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test tests/approval.test.mjs && deno test --allow-env supabase/functions/tests/"
+    "test": "node --test tests/approval.test.mjs tests/status.test.mjs tests/api.test.mjs tests/rekening.test.mjs && deno test --allow-env supabase/functions/tests/",
+    "putaran": "bash tests/putaran/jalankan.sh"
   },
   "dependencies": {
     "@supabase/auth-ui-react": "^0.4.7",
@@ -31,6 +32,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "playwright": "^1.56.1",
     "vite": "^8.0.12"
   }
 }

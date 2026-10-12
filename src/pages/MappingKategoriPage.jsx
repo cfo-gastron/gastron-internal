@@ -1,25 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { FALLBACK_CATEGORY, insertPengajuanToCashflow } from '../lib/cashflow'
 import { useAuth } from '../context/AuthContext'
 
-const FALLBACK = { cat_id: 'd_opex', cat_name: 'Operational Expenditure', subcat_id: 'd_opex3', subcat_name: 'Operasional Tak Terduga' }
-
-async function getCashflowCategory(subkategori) {
-  if (!subkategori) return FALLBACK
-  const { data } = await supabase
-    .from('subkategori_pengajuan')
-    .select('cashflow_cat_id, cashflow_cat_name, cashflow_subcat_id, cashflow_subcat_name')
-    .eq('nama', subkategori)
-    .maybeSingle()
-  if (!data || !data.cashflow_cat_id) return FALLBACK
-  return {
-    cat_id: data.cashflow_cat_id,
-    cat_name: data.cashflow_cat_name,
-    subcat_id: data.cashflow_subcat_id,
-    subcat_name: data.cashflow_subcat_name,
-  }
-}
+const FALLBACK = FALLBACK_CATEGORY
 
 export default function MappingKategoriPage() {
   const { profile } = useAuth()
@@ -66,9 +51,10 @@ export default function MappingKategoriPage() {
     setAiLoading(prev => ({ ...prev, [nama]: true }))
     try {
       const daftarKategori = catOptions.map(o => `${o.cat_name} > ${o.subcat_name} (cat_id: ${o.cat_id}, subcat_id: ${o.subcat_id})`).join('\n')
+      const { data: sesi } = await supabase.auth.getSession()
       const resp = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sesi.session?.access_token || ''}` },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 300,
@@ -82,7 +68,10 @@ export default function MappingKategoriPage() {
       const data = await resp.json()
       const text = data.content?.[0]?.text || ''
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-      setSuggestions(prev => ({ ...prev, [nama]: parsed }))
+      // Saran AI hanya diterima kalau persis ada di daftar kategori cashflow (AI bisa mengarang id)
+      const cocok = catOptions.find(o => o.cat_id === parsed.cat_id && o.subcat_id === parsed.subcat_id)
+      if (!cocok) throw new Error('saran AI tidak ada di daftar kategori. Pilih manual dari daftar.')
+      setSuggestions(prev => ({ ...prev, [nama]: cocok }))
     } catch (e) {
       alert('Gagal minta saran AI: ' + e.message)
     } finally {
@@ -191,24 +180,12 @@ export default function MappingKategoriPage() {
   async function masukinSatuKeCashflow(p) {
     setMissingApplying(prev => ({ ...prev, [p.id]: true }))
     try {
-      const mapping = await getCashflowCategory(p.subkategori)
-      const { error } = await supabase.from('cashflow_transactions').insert({
-        name: p.judul,
-        amount: Math.round(Number(p.total_pengajuan)),
-        date: p.approved_ceo_at ? p.approved_ceo_at.split('T')[0] : new Date().toISOString().split('T')[0],
-        type: 'out',
-        account: 'utama',
-        cat_id: mapping.cat_id,
-        cat_name: mapping.cat_name,
-        subcat_id: mapping.subcat_id,
-        subcat_name: mapping.subcat_name,
-        is_est: false,
-        is_kemb: false,
-        linked_id: p.id,
+      const cf = await insertPengajuanToCashflow(p, {
+        createdBy: profile.id,
+        date: p.approved_ceo_at ? p.approved_ceo_at.split('T')[0] : undefined,
         notes: `Catch-up dari pengajuan ${p.kode_surat}`,
-        created_by: profile.id,
       })
-      if (error) throw error
+      if (cf.error) throw cf.error
       setMissingTx(prev => prev.filter(m => m.id !== p.id))
     } catch (e) {
       alert(`Gagal masukin "${p.judul}": ${e.message}`)
@@ -237,7 +214,7 @@ export default function MappingKategoriPage() {
   }
 
   return (
-    <div style={{ padding: 32, fontFamily: 'inherit', maxWidth: 800 }}>
+    <div style={{ padding: 'clamp(16px, 4vw, 32px)', fontFamily: 'inherit', maxWidth: 800, boxSizing: 'border-box', width: '100%', overflowX: 'hidden' }}>
       <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, cursor: 'pointer', marginBottom: 16 }}>← Kembali</button>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111', marginBottom: 4 }}>Sinkronisasi Kategori</h2>
       <p style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>

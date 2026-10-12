@@ -3,10 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyLpjUpdate } from '../lib/sendNotif'
-import { canApproveLpj as canApproveLpjRule } from '../lib/approval'
+import { canApproveLpj as canApproveLpjRule, canAccessLpj } from '../lib/approval'
+import DeleteButton from '../components/DeleteButton'
+import BrandMark from '../components/BrandMark'
 
 function formatRp(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+}
+
+// Sisa dana LPJ: positif = dikembalikan ke kantor, negatif = kantor kurang bayar ke pengaju.
+// Satu fungsi untuk semua tempat (ringkasan, form, konfirmasi tutup).
+function sisaInfo(sisa) {
+  if (sisa > 0) return { label: 'Sisa dikembalikan', value: formatRp(sisa), color: '#111' }
+  if (sisa < 0) return { label: 'Kurang bayar', value: formatRp(-sisa), color: '#C0272D' }
+  return { label: 'Sisa dana', value: formatRp(0), color: '#111' }
 }
 
 function formatDate(d) {
@@ -17,31 +27,6 @@ function formatDate(d) {
 }
 
 // Tombol hapus dengan konfirmasi inline
-function DeleteButton({ onConfirm, style = {} }) {
-  const [confirming, setConfirming] = useState(false)
-  if (confirming) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 12, color: '#C0272D', fontWeight: 500 }}>Hapus?</span>
-        <button onClick={() => { setConfirming(false); onConfirm() }}
-          style={{ background: '#C0272D', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
-          Ya
-        </button>
-        <button onClick={() => setConfirming(false)}
-          style={{ background: '#F5F5F5', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
-          Batal
-        </button>
-      </div>
-    )
-  }
-  return (
-    <button onClick={() => setConfirming(true)}
-      style={{ background: 'none', border: 'none', color: '#CCC', cursor: 'pointer', fontSize: 20, lineHeight: 1, ...style }}>
-      ×
-    </button>
-  )
-}
-
 function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isMobile, onBack, onEdit }) {
   const sisaDana = Number(lpj.total_pengajuan) - Number(lpj.total_realisasi)
   const role = profile?.role
@@ -78,11 +63,8 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
     <div style={{ flex: 1, marginLeft: isMobile ? 0 : 240, padding: isMobile ? '16px 16px 100px' : '32px', maxWidth: isMobile ? '100%' : 860 }}>
       {isMobile ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-            <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
-          </div>
+          <button onClick={onBack} aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
+          <div style={{ flex: 1 }}><BrandMark compact /></div>
         </div>
       ) : null}
 
@@ -108,7 +90,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
           {[
             { label: 'Total Anggaran', value: formatRp(lpj.total_pengajuan), color: '#111' },
             { label: 'Realisasi', value: formatRp(lpj.total_realisasi), color: '#2E7D32' },
-            { label: 'Sisa Dana', value: formatRp(Math.abs(sisaDana)), color: sisaDana > 0 ? '#C0272D' : '#2E7D32' },
+            sisaInfo(sisaDana),
           ].map(({ label, value, color }) => (
             <div key={label}>
               <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
@@ -212,7 +194,7 @@ function LpjViewMode({ pengajuan, lpj, profile, onApprove, approving, error, isM
             <div style={{ fontSize: 20, textAlign: 'center', marginBottom: 12 }}>📋</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 8, textAlign: 'center' }}>Close LPJ?</div>
             <div style={{ fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>
-              Yakin mau close LPJ ini? Total realisasi <strong style={{ color: '#2E7D32' }}>{formatRp(lpj.total_realisasi)}</strong>, sisa dana <strong style={{ color: '#C0272D' }}>{formatRp(Math.abs(sisaDana))}</strong>. Setelah closed tidak bisa diubah.
+              Yakin mau close LPJ ini? Total realisasi <strong style={{ color: '#2E7D32' }}>{formatRp(lpj.total_realisasi)}</strong>, {sisaInfo(sisaDana).label.toLowerCase()} <strong style={{ color: sisaInfo(sisaDana).color }}>{sisaInfo(sisaDana).value}</strong>. Setelah closed tidak bisa diubah.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowCloseModal(false)}
@@ -516,6 +498,14 @@ export default function LpjPage() {
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (!pengajuan) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Pengajuan tidak ditemukan</div>
+  if (!existingLpj && !canAccessLpj(profile?.id, profile?.role, pengajuan)) {
+    return (
+      <div style={{ padding: 40, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, marginBottom: 16 }}>LPJ belum bisa dibuat. LPJ dibuat oleh pengaju (atau Finance/CFO) setelah dana ditransfer, dan tidak perlu untuk reimbursement atau Trip Operasional.</div>
+        <button onClick={() => navigate(`/pengajuan/${pengajuanId}`)} className="btn-primary" style={{ width: 'auto', padding: '12px 20px' }}>Kembali ke pengajuan</button>
+      </div>
+    )
+  }
 
   const backTo = () => navigate(`/pengajuan/${pengajuanId}`)
   const inputStyle = { padding: '6px 8px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: 13, textAlign: 'right', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
@@ -525,11 +515,8 @@ export default function LpjPage() {
 
       {isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button onClick={isEditMode ? cancelEdit : backTo} style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 0 }}>←</button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-            <img src="/logo-gastron.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#C0272D' }}>Gastron</span>
-          </div>
+          <button onClick={isEditMode ? cancelEdit : backTo} aria-label="Kembali" style={{ background: 'none', border: 'none', color: '#C0272D', fontSize: 20, cursor: 'pointer', padding: 10, margin: -10, minWidth: 44, minHeight: 44, lineHeight: 1, flexShrink: 0 }}>←</button>
+          <div style={{ flex: 1 }}><BrandMark compact /></div>
         </div>
       )}
 
@@ -550,7 +537,7 @@ export default function LpjPage() {
           {[
             { label: 'Total Anggaran', value: formatRp(pengajuan.total_pengajuan), color: '#111' },
             { label: 'Realisasi', value: formatRp(totalRealisasi), color: '#2E7D32' },
-            { label: 'Sisa Dana', value: formatRp(Math.abs(sisaDana)), color: sisaDana > 0 ? '#C0272D' : '#2E7D32' },
+            sisaInfo(sisaDana),
           ].map(({ label, value, color }) => (
             <div key={label}>
               <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
@@ -608,7 +595,7 @@ export default function LpjPage() {
                 <div key={e.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F8F8F8', background: '#FAFFF4' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <div style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item Tambahan #{idx + 1}</div>
-                    <DeleteButton onConfirm={() => removeExtraItem(e.id)} />
+                    <DeleteButton label="Hapus item tambahan" onConfirm={() => removeExtraItem(e.id)} />
                   </div>
                   <input placeholder="Nama item" value={e.uraian} onChange={ev => updateExtraItem(e.id, 'uraian', ev.target.value)}
                     style={{ width: '100%', padding: '8px', border: '1.5px solid #E0E0E0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box' }} />
@@ -700,7 +687,7 @@ export default function LpjPage() {
                     </td>
                     <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#2E7D32', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatRp(subtotal)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                      <DeleteButton onConfirm={() => removeExtraItem(e.id)} />
+                      <DeleteButton label="Hapus item tambahan" onConfirm={() => removeExtraItem(e.id)} />
                     </td>
                   </tr>
                 )
@@ -728,7 +715,7 @@ export default function LpjPage() {
           <div key={idx} style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', padding: isMobile ? '16px' : 20, marginBottom: 14 }} onPaste={e => handlePaste(idx, e)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Nota #{idx + 1}</div>
-              {notas.length > 1 && <DeleteButton onConfirm={() => removeNota(idx)} />}
+              {notas.length > 1 && <DeleteButton label={`Hapus nota ${idx + 1}`} onConfirm={() => removeNota(idx)} />}
             </div>
 
             <div className="form-group" style={{ marginBottom: 14 }}>
@@ -782,7 +769,7 @@ export default function LpjPage() {
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{nota.file.name || 'Gambar dari clipboard'}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>{nota.file.size ? `${(nota.file.size / 1024).toFixed(1)} KB` : ''}</div>
                   </div>
-                  <DeleteButton onConfirm={() => updateNota(idx, 'file', null)} />
+                  <DeleteButton label="Hapus foto nota" onConfirm={() => updateNota(idx, 'file', null)} />
                 </div>
               ) : nota.existingFileUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F7FF', borderRadius: 8, padding: '10px 14px', border: '1px solid #BBDEFB' }}>
@@ -846,13 +833,7 @@ export default function LpjPage() {
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F8F8' }}>
       {!isMobile && (
         <div style={{ width: 240, background: '#fff', borderRight: '1px solid #F0F0F0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50, display: 'flex', flexDirection: 'column', padding: '24px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-            <img src="/logo-gastron.png" alt="" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}><span style={{ color: '#C0272D' }}>G</span>astron</div>
-              <div style={{ fontSize: 10, color: '#999' }}>Sistem Pengajuan</div>
-            </div>
-          </div>
+          <div style={{ marginBottom: 32 }}><BrandMark /></div>
           <button onClick={isEditing ? cancelEdit : backTo} style={{ background: '#FFF0F0', border: 'none', textAlign: 'left', padding: '10px 12px', borderRadius: 8, fontSize: 13, color: '#C0272D', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             ← {isEditing ? 'Batalkan Edit' : 'Kembali'}
           </button>

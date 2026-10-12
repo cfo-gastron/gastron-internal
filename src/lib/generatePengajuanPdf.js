@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { REKENING_FIELDS, REKENING_JUDUL } from './rekening'
 
 const SUPABASE_URL = 'https://vybfhlpmtsdtegbrdsvo.supabase.co'
 const SIGNATURES_BUCKET = `${SUPABASE_URL}/storage/v1/object/public/signatures`
@@ -24,6 +25,21 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('id-ID', {
     day: 'numeric', month: 'long', year: 'numeric'
   })
+}
+
+// Gambar dimuatkan ke kotak (maxW x maxH mm) dengan bentuk asli tetap — tidak ditarik / gepeng.
+// align: 'left' | 'center' (horizontal); vertikal selalu di tengah kotak.
+export function ukuranPas(imgW, imgH, maxW, maxH) {
+  const skala = Math.min(maxW / imgW, maxH / imgH)
+  return { w: imgW * skala, h: imgH * skala }
+}
+
+function gambarPas(doc, data, x, y, maxW, maxH, align = 'center') {
+  const props = doc.getImageProperties(data)
+  const { w, h } = ukuranPas(props.width, props.height, maxW, maxH)
+  const gx = align === 'left' ? x : x + (maxW - w) / 2
+  const gy = y + (maxH - h) / 2
+  doc.addImage(data, props.fileType || 'PNG', gx, gy, w, h, undefined, 'FAST')
 }
 
 // Fetch image dari URL dan convert ke base64
@@ -43,38 +59,34 @@ async function fetchImageAsBase64(url) {
   }
 }
 
-// Tentukan approver berdasarkan division dan approval logs
+// Tentukan kotak persetujuan berdasarkan divisi. Nama & tanda tangan diambil dari kolom
+// step1_approved_by / cfo_approved_by di pengajuan (siapa yang approve SEKARANG), bukan dari urutan log —
+// supaya approval yang dibatalkan atau siklus revisi lama tidak ikut tampil.
 function getApprovers(pengajuan, logs) {
   const division = pengajuan.division
-
-  // Cari nama approver dari logs
-  const getApproverName = (action, stepHint) => {
-    // Cari dari logs berdasarkan action approved dan role
-    const approvedLogs = logs.filter(l => l.action === 'approved')
-    if (approvedLogs.length === 0) return null
-    if (stepHint === 'step1' && approvedLogs[0]) return approvedLogs[0].user?.full_name || null
-    if (stepHint === 'cfo' && approvedLogs.length >= 2) return approvedLogs[1].user?.full_name || null
-    if (stepHint === 'ceo' && approvedLogs.length >= 3) return approvedLogs[2].user?.full_name || null
-    return null
+  const namaDari = (userId) => {
+    if (!userId) return null
+    const log = [...logs].reverse().find(l => l.action_by === userId && l.user?.full_name)
+    return log?.user?.full_name || null
   }
+  const step1 = { by: pengajuan.step1_approved_by, name: namaDari(pengajuan.step1_approved_by) }
+  const cfo = { by: pengajuan.cfo_approved_by, name: namaDari(pengajuan.cfo_approved_by) }
 
-  // Tentukan approver berdasarkan division
   if (division === 'OPR') {
     return [
-      { role: 'Chief Operational Officer', sigFile: 'ttd_coo.png', name: getApproverName('approved', 'step1') },
-      { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', name: getApproverName('approved', 'cfo') },
+      { role: 'Chief Operational Officer', sigFile: 'ttd_coo.png', approved: !!step1.by, name: step1.name },
+      { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', approved: !!cfo.by, name: cfo.name },
     ]
   } else if (division === 'ADM' || division === 'PRC') {
     return [
-      { role: 'Chief Administrative Officer', sigFile: 'ttd_cao.png', name: getApproverName('approved', 'step1') },
-      { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', name: getApproverName('approved', 'cfo') },
-    ]
-  } else {
-    // FIN — langsung CFO
-    return [
-      { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', name: getApproverName('approved', 'step1') },
+      { role: 'Chief Administrative Officer', sigFile: 'ttd_cao.png', approved: !!step1.by, name: step1.name },
+      { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', approved: !!cfo.by, name: cfo.name },
     ]
   }
+  // FIN — langsung CFO
+  return [
+    { role: 'Chief Financial Officer', sigFile: 'ttd_cfo.png', approved: !!(cfo.by || step1.by), name: cfo.name || step1.name },
+  ]
 }
 
 export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []) {
@@ -93,17 +105,12 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
 
   // ── Fetch semua gambar parallel ──────────────────────────────────────────────
   const approvers = getApprovers(pengajuan, logs)
-  const isApproved = ['approved_step1', 'approved_cfo', 'approved_ceo'].includes(pengajuan.status)
-  const approvedLogs = logs.filter(l => l.action === 'approved')
 
   const [logoBase64, ...sigBase64s] = await Promise.all([
     fetchImageAsBase64(`${SIGNATURES_BUCKET}/logo_gastron.png`),
-    ...approvers.map((a, ai) => {
-      const hasApproved = approvedLogs.length > ai
-      return hasApproved
-        ? fetchImageAsBase64(`${SIGNATURES_BUCKET}/${a.sigFile}`)
-        : Promise.resolve(null)
-    }),
+    ...approvers.map((a) => a.approved
+      ? fetchImageAsBase64(`${SIGNATURES_BUCKET}/${a.sigFile}`)
+      : Promise.resolve(null)),
   ])
 
   // ── HEADER BAR ────────────────────────────────────────────────────────────────
@@ -111,7 +118,8 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
   doc.rect(0, 0, W, 20, 'F')
 
   if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', margin, 3, 32, 13, undefined, 'FAST')
+    // Logo di header merah (tinggi 20 mm): maks 50 x 12 mm, rata kiri
+    gambarPas(doc, logoBase64, margin, 4, 50, 12, 'left')
   } else {
     doc.setTextColor(...WHITE)
     doc.setFont('helvetica', 'bold')
@@ -227,7 +235,7 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
     doc.setTextColor(...DARK)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
-    doc.text('Penerima Pembayaran', margin, y)
+    doc.text(REKENING_JUDUL, margin, y)
     y += 4
 
     const boxH = penerima.length * 22 + 4
@@ -236,12 +244,7 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
 
     penerima.forEach((p, pi) => {
       const py = y + pi * 22 + 4
-      const fields = [
-        ['Nama Penerima', p.nama_penerima],
-        ['Bank', p.bank],
-        ['No. Rekening', p.no_rekening],
-        ['Atas Nama', p.atas_nama],
-      ]
+      const fields = REKENING_FIELDS.map(f => [f.label, p[f.key]])
       const colW = contentW / 2
       fields.forEach((f, fi) => {
         const fx = margin + (fi % 2) * colW + 4
@@ -310,12 +313,9 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
     const sigData = sigBase64s[ai]
     if (sigData) {
       try {
-        // Render kecil dan center biar tidak melebar
-        const sigW = 28
-        const sigH = 12
-        const sigX = ax + (ttdW - sigW) / 2
-        doc.addImage(sigData, 'PNG', sigX, y + 7, sigW, sigH, undefined, 'FAST')
-      } catch {}
+        // Tanda tangan di tengah kotak: maks 40 x 15 mm, bentuk asli tetap
+        gambarPas(doc, sigData, ax + 4, y + 8, Math.min(40, ttdW - 8), 15, 'center')
+      } catch (e) { console.error('Gagal menggambar tanda tangan:', e) }
     } else {
       // Placeholder kosong kalau belum approve
       doc.setDrawColor(200, 200, 200)
@@ -327,12 +327,12 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
     doc.setTextColor(...DARK)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8.5)
-    const displayName = approver.name || (isApproved ? '-' : '________________')
+    const displayName = approver.approved ? (approver.name || '-') : '________________'
     doc.text(displayName, ax + 4, y + ttdBoxH - 4)
   })
 
   // Watermark kalau belum ada approval sama sekali
-  if (approvedLogs.length === 0) {
+  if (!approvers.some(a => a.approved)) {
     doc.setTextColor(220, 220, 220)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(32)
@@ -356,7 +356,7 @@ export async function generatePengajuanPdf(pengajuan, items, penerima, logs = []
   }
 
   // ── SAVE ────────────────────────────────────────────────────────────────────────
-  const fileName = `Surat_${pengajuan.kode_surat || pengajuan.id}_${new Date().toISOString().slice(0, 10)}.pdf`
+  const fileName = `Surat_${pengajuan.kode_surat || pengajuan.id}.pdf`
   const pdfBlob = doc.output('blob')
 const blobUrl = URL.createObjectURL(pdfBlob)
 const link = document.createElement('a')

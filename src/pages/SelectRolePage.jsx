@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const ROLES = [
-  { value: 'operational', label: 'Operational Assistant', division: 'OPR', desc: 'Tim operasional & kandang' },
+  { value: 'operational', label: 'Operational Assistant', division: 'OPR', desc: 'Tim operasional & lapangan' },
   { value: 'procurement', label: 'Procurement', division: 'PRC', desc: 'Pembelian alat & service' },
   { value: 'corporate_secretary', label: 'Corporate Secretary', division: 'ADM', desc: 'Izin & legalitas' },
   { value: 'finance', label: 'Finance & Accounting', division: 'FIN', desc: 'Keuangan & pembukuan' },

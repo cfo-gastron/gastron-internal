@@ -81,3 +81,58 @@ export function buildNotifs({ kind, item, newStatus, info, relevantIds, approver
 
   return out
 }
+
+// Pengajuan boleh diubah hanya oleh pengajunya, dan hanya saat Perlu Revisi / Ditahan.
+export function canEditPengajuan(userId, pengajuan) {
+  return !!pengajuan && !!userId && pengajuan.submitted_by === userId && ['revision', 'hold'].includes(pengajuan.status)
+}
+
+// Jenis pengajuan yang tidak butuh LPJ
+export function needsLpj(pengajuan) {
+  return !!pengajuan && pengajuan.tipe !== 'reimbursement' && pengajuan.subkategori !== 'Trip Operasional'
+}
+
+// LPJ boleh dibuat/dibuka oleh pengaju, Finance, atau CFO, setelah dana ditransfer.
+export function canAccessLpj(userId, role, pengajuan) {
+  if (!pengajuan || pengajuan.status !== 'approved_ceo' || !needsLpj(pengajuan)) return false
+  return role === 'cfo' || role === 'finance' || pengajuan.submitted_by === userId
+}
+
+// "Giliran saya": role ini yang ditunggu (utama) di tahap ini. Sama persis dengan penerima notif
+// "Perlu approval kamu", dipakai daftar di Dashboard.
+export function isMyTurnPengajuan(role, status, division) {
+  return !!role && pengajuanApprovers(status, division).utama.includes(role)
+}
+export function isMyTurnLpj(role, lpjStatus) {
+  return !!role && lpjApprovers(lpjStatus).utama.includes(role)
+}
+
+// Sejak kapan pengajuan menunggu di tahap sekarang
+export function waitingSince(p) {
+  if (p.status === 'approved_cfo') return p.approved_cfo_at || p.submitted_at
+  if (p.status === 'approved_step1') return p.approved_step1_at || p.submitted_at
+  return p.submitted_at || p.created_at
+}
+
+// Subkategori (ditebak otomatis) boleh dibetulkan CFO/Finance selama dana belum ditransfer.
+export function canChangeSubkategori(role, status) {
+  return ['cfo', 'finance'].includes(role) && status !== 'approved_ceo'
+}
+
+// Batalkan approval: hanya orang yang approve tahap itu, dan hanya selama tahap berikutnya belum bertindak.
+// Final approve CEO (sudah ditransfer & masuk cashflow) tidak bisa dibatalkan di sini.
+// Hasil: null (tidak bisa) | { dari, ke, kosongkan } untuk update pengajuan.
+export function rencanaBatalApproval(userId, p) {
+  if (!p || !userId) return null
+  if (p.status === 'approved_step1' && p.step1_approved_by === userId) {
+    return { dari: 'approved_step1', ke: 'submitted', kosongkan: { approved_step1_at: null, step1_approved_by: null } }
+  }
+  if (p.status === 'approved_cfo' && p.cfo_approved_by === userId) {
+    // Divisi FIN: CFO approve tahap 1 sekaligus tahap CFO -> batal = kembali ke awal
+    if (p.step1_approved_by === userId && p.division === 'FIN') {
+      return { dari: 'approved_cfo', ke: 'submitted', kosongkan: { approved_step1_at: null, step1_approved_by: null, approved_cfo_at: null, cfo_approved_by: null } }
+    }
+    return { dari: 'approved_cfo', ke: 'approved_step1', kosongkan: { approved_cfo_at: null, cfo_approved_by: null } }
+  }
+  return null
+}
