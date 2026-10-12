@@ -205,3 +205,24 @@ Sudah ditransfer (bukan Transferred) · Setujui/Disetujui (Approve, ACC, di-acc)
 - **Check:** K42 kandidat lulus, live gagal (item 2→0). Khusus 42/42, unit 44/44, deno 10/10.
 - **Act:** owner jalankan `supabase/sql/putaran-5.sql` untuk daftar pengajuan yang itemnya sudah hilang; item diisi ulang oleh pengaju.
 - **Pelajaran:** mock harus meniru aturan DB (kolom generated, constraint), bukan menerima apa saja.
+
+### Putaran 5b — Audit alur fungsional (semua jalur tulis ke database)
+
+Data live (12 Okt): 4 pengajuan bertotal tapi tanpa item — GTR-OPR-142 (Menunggu CFO, kena bug Ubah), GTR-FIN-084 (Menunggu), GTR-OPR-097 (sudah ditransfer), GTR-PRC-017 (Menunggu CEO sejak Juli). Dua terakhir kemungkinan dari Form lama yang tidak cek error insert item.
+
+| # | Anomali | Sev | Status |
+|---|---|---|---|
+| F1 | Ubah/Submit Ulang menghapus item (kolom `jumlah` generated) | 4 | Fix + K42 |
+| F2 | Form: item gagal tersimpan → pengajuan tanpa item tetap terkirim & notif | 4 | Fix (dibatalkan utuh) + K44 |
+| F3 | Pengajuan tanpa item / jumlah item ≠ total bisa di-approve sampai transfer & cashflow | 4 | Fix (approve diblok + peringatan) + K43 |
+| F4 | Edit LPJ hapus nota dulu, insert item nota tanpa cek error | 4 | Fix (data baru dulu) + K45 |
+| F5 | Submit LPJ: nota gagal → LPJ kosong tetap terkirim | 3 | Fix (LPJ dibatalkan) |
+| F6 | Approve LPJ tanpa cek status → Finance & CFO bisa menimpa | 3 | Fix + K45 |
+| F7 | Foto nota / lampiran gagal unggah diam-diam | 3 | Fix (dilaporkan) |
+| F8 | Setelah revisi isi/nominal berubah, approval tahap sebelumnya tetap berlaku | 3 | Keputusan owner (D16) |
+| F9 | Pengaju meng-approve pengajuannya sendiri (Linda: submit & approve tahap 1 di menit yang sama) | 3 | Keputusan owner (H3) |
+| F10 | Pengajuan yang masih menunggu bisa diarsipkan → hilang dari antrean approver | 3 | Keputusan owner (D17) |
+| F11 | Insert timeline (approval_logs) gagal diam-diam di approve/tolak | 2 | Backlog |
+| F12 | Kode surat terpakai walau pengajuan dibatalkan (nomor loncat) | 1 | Diterima |
+
+Check: khusus 45/45, unit 45/45, klik desktop 109 / 0 error.

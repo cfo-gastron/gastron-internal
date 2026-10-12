@@ -14,3 +14,14 @@ order by p.submitted_at desc;
 select column_name, is_generated, generation_expression
 from information_schema.columns
 where table_schema = 'public' and table_name = 'pengajuan_items' and column_name = 'jumlah';
+
+-- 3. Asal kerusakan tiap pengajuan tanpa item: dari Submit Ulang (bug Ubah) atau dari Form (insert item gagal saat dibuat)
+select p.kode_surat, p.status,
+       count(l.*) filter (where l.action = 'submitted')                as jumlah_submit,
+       bool_or(l.action = 'revision')                                  as pernah_direvisi,
+       case when bool_or(l.action = 'revision') then 'Submit Ulang (bug Ubah)' else 'Saat dibuat (Form)' end as dugaan_asal
+from public.pengajuan p
+left join public.approval_logs l on l.pengajuan_id = p.id
+where p.total_pengajuan > 0
+  and not exists (select 1 from public.pengajuan_items i where i.pengajuan_id = p.id)
+group by p.kode_surat, p.status;

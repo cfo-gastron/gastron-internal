@@ -180,3 +180,13 @@ export function langkahBerikutnya(p, { hasLpj = false } = {}) {
     default: return ''
   }
 }
+
+// Isi pengajuan wajib utuh sebelum di-approve: ada item, dan jumlah item = total pengajuan.
+// Hasil: null (aman) | teks masalah. Dipakai Detail (blok tombol approve + peringatan).
+export function masalahIsiPengajuan(items, total) {
+  const list = items || []
+  if (list.length === 0) return 'Pengajuan ini tidak punya item. Minta pengaju mengisi ulang item lewat Perlu Revisi sebelum di-approve.'
+  const jumlah = list.reduce((s, i) => s + Number(i.jumlah ?? Number(i.qty) * Number(i.harga_satuan)), 0)
+  if (Math.round(jumlah) !== Math.round(Number(total))) return `Jumlah item (${formatRp(jumlah)}) tidak sama dengan total pengajuan (${formatRp(total)}). Minta revisi supaya angkanya cocok.`
+  return null
+}

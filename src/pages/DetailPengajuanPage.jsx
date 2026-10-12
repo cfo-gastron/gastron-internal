@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { generatePengajuanPdf } from '../lib/generatePengajuanPdf'
 import { notifyPengajuanUpdate } from '../lib/sendNotif'
-import { canApprovePengajuan, canAccessLpj as canAccessLpjRule, canChangeSubkategori, rencanaBatalApproval, tahapTerakhir, canLanjutkanTahanan, langkahBerikutnya } from '../lib/approval'
+import { canApprovePengajuan, canAccessLpj as canAccessLpjRule, canChangeSubkategori, rencanaBatalApproval, tahapTerakhir, canLanjutkanTahanan, langkahBerikutnya, masalahIsiPengajuan } from '../lib/approval'
 import { BELUM_DIKATEGORIKAN } from '../lib/subkategori'
 import { REKENING_FIELDS, REKENING_JUDUL, labelRekening } from '../lib/rekening'
 import { insertPengajuanToCashflow } from '../lib/cashflow'
@@ -128,6 +128,9 @@ export default function DetailPengajuanPage() {
   }
 
   async function handleApprove() {
+    // Tidak boleh approve pengajuan yang itemnya kosong / tidak cocok dengan total
+    const masalah = masalahIsiPengajuan(items, pengajuan.total_pengajuan)
+    if (masalah) { setActionError(masalah); setShowFinalApproveModal(false); return }
     setActionLoading(true)
     const status = pengajuan.status
     let updateData = {}
@@ -512,6 +515,11 @@ export default function DetailPengajuanPage() {
 
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', marginBottom: 16 }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid #F5F5F5', fontSize: 14, fontWeight: 600, color: '#111' }}>Item Pengajuan</div>
+          {masalahIsiPengajuan(items, pengajuan.total_pengajuan) && (
+            <div role="alert" data-testid="masalah-item" style={{ margin: '12px 16px 0', background: '#FFF0F0', border: '1px solid #F5C2C2', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#8B1A1F', lineHeight: 1.5 }}>
+              ⚠ {masalahIsiPengajuan(items, pengajuan.total_pengajuan)}
+            </div>
+          )}
           {isMobile ? (
             <div>
               {items.map((item, idx) => (

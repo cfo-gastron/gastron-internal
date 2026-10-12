@@ -104,12 +104,19 @@ export default function FormPengajuanPage() {
           satuan: item.satuan, harga_satuan: Number(item.harga_satuan),
         }))
       )
-      if (itemsErr) throw new Error(`Pengajuan ${kodeSurat} tersimpan, tapi item gagal disimpan (${itemsErr.message}). Hubungi Finance.`)
+      // Gagal simpan item/rekening -> pengajuan dibatalkan utuh (tidak ada pengajuan tanpa item)
+      const batalkan = async (pesan) => {
+        await supabase.from('pengajuan_items').delete().eq('pengajuan_id', pengajuan.id)
+        const { data: terhapus, error: delErr } = await supabase.from('pengajuan').delete().eq('id', pengajuan.id).select('id')
+        if (delErr || !terhapus?.length) throw new Error(`${pesan} Pengajuan ${kodeSurat} terlanjur tersimpan tanpa item. Jangan kirim lagi; minta CFO/Finance memintanya direvisi.`)
+        throw new Error(`${pesan} Pengajuan belum terkirim, silakan kirim lagi.`)
+      }
+      if (itemsErr) await batalkan(`Item gagal disimpan (${itemsErr.message}).`)
 
       const penerimaToInsert = rapikanRekening(penerima)
       if (penerimaToInsert.length > 0) {
         const { error: penErr } = await supabase.from('pengajuan_penerima').insert(penerimaToInsert.map(p => ({ ...p, pengajuan_id: pengajuan.id })))
-        if (penErr) throw new Error(`Pengajuan ${kodeSurat} tersimpan, tapi data penerima gagal disimpan (${penErr.message}). Hubungi Finance.`)
+        if (penErr) await batalkan(`Rekening tujuan gagal disimpan (${penErr.message}).`)
       }
 
       const gagalUpload = []

@@ -629,6 +629,71 @@ async function bukaBatal(s) { await s.page.getByRole('button', { name: BATAL }).
   t('K42 Ubah & kirim ulang: item/rekening utuh, gagal simpan tidak menghapus data', salah.length === 0, salah.join(' | '))
 }
 
+// K43. Approve diblok kalau item kosong / jumlah item tidak sama dengan total (peringatan tampil)
+{
+  const salah = []
+  for (const [nama, ubah] of [['kosong', (fx) => { fx.pengajuan_items = fx.pengajuan_items.filter((r) => r.pengajuan_id !== 'P01') }],
+                              ['beda', (fx) => { const r = fx.pengajuan_items.find((x) => x.pengajuan_id === 'P01'); r.harga_satuan += 5000; r.jumlah += 5000 }]]) {
+    const fx = clone(FIXTURE); ubah(fx)
+    const s = await openApp(b, base, { role: 'coo', path: '/pengajuan/P01', fixture: fx })
+    await s.page.waitForTimeout(700)
+    const peringatan = await s.page.getByTestId('masalah-item').count().catch(() => 0)
+    await s.page.getByRole('button', { name: /^✓ Approve/ }).click({ timeout: 3000 }).catch(() => {})
+    await s.page.waitForTimeout(700)
+    const patch = patchesTo(s.mock, 'pengajuan').length
+    if (!peringatan || patch !== 0) salah.push(`${nama}: peringatan=${peringatan} patch=${patch}`)
+    await s.ctx.close()
+  }
+  const s = await openApp(b, base, { role: 'coo', path: '/pengajuan/P01' })
+  await s.page.waitForTimeout(700)
+  const palsu = await s.page.getByTestId('masalah-item').count().catch(() => 0)
+  if (palsu) salah.push('pengajuan normal ikut diberi peringatan')
+  await s.ctx.close()
+  t('K43 Approve diblok kalau item kosong / jumlah beda total', salah.length === 0, salah.join(' | '))
+}
+
+// K44. Form: item gagal disimpan -> pengajuan dibatalkan utuh (tidak ada pengajuan tanpa item, tanpa notif)
+{
+  const fx = clone(FIXTURE); fx.__gagalInsert = 'pengajuan_items'
+  const awal = fx.pengajuan.length
+  const s = await openApp(b, base, { role: 'operational', path: '/pengajuan/baru', fixture: fx })
+  await isiForm(s.page, 'Ganti ban truk B 9123 KZ', 'Ban depan kiri')
+  await s.page.locator('input[type="number"]').nth(1).fill('100000').catch(() => {})
+  await s.page.waitForTimeout(1200)
+  await s.page.getByRole('button', { name: 'Submit Pengajuan' }).click().catch(() => {})
+  await s.page.waitForTimeout(1500)
+  const sisa = s.mock.db.pengajuan.length
+  const pesan = await s.page.getByText(/belum terkirim/).count().catch(() => 0)
+  const notif = s.mock.log.notifs.length
+  t('K44 Form gagal simpan item -> pengajuan tidak tersimpan, pesan jelas, tanpa notif', sisa === awal && pesan > 0 && notif === 0, `pengajuan ${awal}->${sisa} pesan=${pesan} notif=${notif}`)
+  await s.ctx.close()
+}
+
+// K45. LPJ: approve dobel dicegah (status berubah di tempat lain) & Edit LPJ gagal tidak menghapus nota lama
+{
+  const salah = []
+  const s = await openApp(b, base, { role: 'finance', path: '/lpj/P08' })
+  await s.page.waitForTimeout(700)
+  s.mock.db.lpj.find((l) => l.id === 'LPJ-08').status = 'approved_finance' // CFO sudah memproses duluan
+  await s.page.getByRole('button', { name: /Approve LPJ \(Finance\)/ }).click({ timeout: 3000 }).catch(() => {})
+  await s.page.waitForTimeout(900)
+  const ditimpa = s.mock.db.lpj.find((l) => l.id === 'LPJ-08').approved_finance_by
+  if (ditimpa) salah.push('approve dobel menimpa data')
+  await s.ctx.close()
+  const fx = clone(FIXTURE); fx.__gagalInsert = 'lpj_nota_items'
+  const awal = fx.lpj_nota_items.filter((r) => r.nota_id === 'LPJ-08-N1').length
+  const s2 = await openApp(b, base, { role: 'procurement', path: '/lpj/P08', fixture: fx })
+  await s2.page.getByRole('button', { name: /Edit LPJ/ }).click({ timeout: 3000 }).catch(() => {})
+  await s2.page.waitForTimeout(700)
+  await s2.page.getByRole('button', { name: 'Simpan Perubahan' }).first().click({ timeout: 3000 }).catch(() => {})
+  await s2.page.waitForTimeout(1500)
+  const notaLama = s2.mock.db.lpj_nota.filter((n) => n.lpj_id === 'LPJ-08')
+  const itemLama = s2.mock.db.lpj_nota_items.filter((r) => r.nota_id === 'LPJ-08-N1').length
+  if (notaLama.length !== 1 || notaLama[0].id !== 'LPJ-08-N1' || itemLama !== awal) salah.push(`edit gagal: nota=${notaLama.map((n) => n.id)} item ${awal}->${itemLama}`)
+  await s2.ctx.close()
+  t('K45 LPJ: approve dobel dicegah, Edit LPJ gagal tidak menghapus nota lama', salah.length === 0, salah.join(' | '))
+}
+
 await b.close()
 const gagal = hasil.filter((h) => !h.lulus)
 hasil.forEach((h) => console.log((h.lulus ? 'LULUS ' : 'GAGAL ') + h.nama + (h.lulus || !h.detail ? '' : '  [' + h.detail.slice(0, 300) + ']')))

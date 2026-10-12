@@ -371,8 +371,10 @@ export default function LpjPage() {
       setError(`Role "${role}" tidak bisa approve LPJ dengan status "${existingLpj.status}"`)
       setApproving(false); return
     }
-    const { error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id)
+    // Hanya kalau status LPJ belum diubah orang lain (mencegah approve dobel Finance & CFO bersamaan)
+    const { data: updated, error: updateErr } = await supabase.from('lpj').update(updateData).eq('id', existingLpj.id).eq('status', existingLpj.status).select('id')
     if (updateErr) { setError('Gagal approve: ' + updateErr.message); setApproving(false); return }
+    if (!updated?.length) { setError('LPJ ini sudah diproses orang lain. Halaman dimuat ulang.'); setApproving(false); await fetchData(); return }
 
     const notifMap = {
       approved_finance: { title: '✅ LPJ disetujui Finance', body: `LPJ "${pengajuan.judul}" udah di-acc Finance, tinggal CFO` },
@@ -403,7 +405,8 @@ export default function LpjPage() {
     if (!nota.file) return { fileUrl: nota.existingFileUrl || null, fileName: nota.existingFileName || null }
     const ext = nota.file.name?.split('.').pop() || 'jpg'
     const path = `${lpjId}/${Date.now()}.${ext}`
-    const { data: uploadData } = await supabase.storage.from('lpj-nota').upload(path, nota.file)
+    const { data: uploadData, error: upErr } = await supabase.storage.from('lpj-nota').upload(path, nota.file)
+    if (upErr || !uploadData) throw new Error(`foto nota "${nota.nama_nota}" gagal diunggah${upErr ? ': ' + upErr.message : ''}`)
     if (uploadData) {
       const { data: urlData } = supabase.storage.from('lpj-nota').getPublicUrl(path)
       return { fileUrl: urlData.publicUrl, fileName: nota.file.name || 'nota.jpg' }
@@ -422,7 +425,11 @@ export default function LpjPage() {
         submitted_at: new Date().toISOString(),
       }).select().single()
       if (lpjErr) throw lpjErr
-      await insertNotas(lpj.id)
+      try { await insertNotas(lpj.id) } catch (e) {
+        await hapusNotas(lpj.id)
+        await supabase.from('lpj').delete().eq('id', lpj.id)
+        throw new Error(`Nota gagal disimpan (${e.message}). LPJ belum terkirim, silakan kirim lagi.`, { cause: e })
+      }
       notifyLpjUpdate(
         { ...pengajuan, id: pengajuanId }, profile.id, 'submitted',
         { title: '📋 LPJ baru', body: `${profile.full_name} submit LPJ untuk "${pengajuan.judul}"` },
@@ -438,18 +445,24 @@ export default function LpjPage() {
     setSubmitting(true); setError(null)
     try {
       const lpjId = existingLpj.id
-      const { data: oldNotas } = await supabase.from('lpj_nota').select('id').eq('lpj_id', lpjId)
-      if (oldNotas?.length > 0) {
-        const oldNotaIds = oldNotas.map(n => n.id)
-        await supabase.from('lpj_nota_items').delete().in('nota_id', oldNotaIds)
-        await supabase.from('lpj_nota').delete().eq('lpj_id', lpjId)
+      // Aman: nota baru masuk dulu, nota lama baru dihapus setelah semua berhasil
+      const { data: oldNotas, error: oldErr } = await supabase.from('lpj_nota').select('id').eq('lpj_id', lpjId)
+      if (oldErr) throw new Error(`Gagal membaca nota lama (${oldErr.message})`)
+      const oldNotaIds = (oldNotas || []).map(n => n.id)
+      let notaBaru = []
+      try { notaBaru = await insertNotas(lpjId) } catch (e) {
+        await hapusNotas(lpjId, oldNotaIds)
+        throw new Error(`Nota gagal disimpan (${e.message}). Belum ada yang berubah, coba lagi.`, { cause: e })
       }
       const { error: updateErr } = await supabase.from('lpj').update({
         total_realisasi: totalRealisasi,
         metode_pengembalian: sisaDana > 0 ? metodePengembalian : null,
-      }).eq('id', lpjId)
-      if (updateErr) throw updateErr
-      await insertNotas(lpjId)
+      }).eq('id', lpjId).eq('status', 'submitted')
+      if (updateErr) {
+        await hapusNotasById(notaBaru)
+        throw updateErr
+      }
+      await hapusNotasById(oldNotaIds)
       setIsEditing(false)
       setExtraItems([])
       await fetchData()
@@ -457,7 +470,20 @@ export default function LpjPage() {
     setSubmitting(false)
   }
 
+  // Hapus nota (beserta itemnya) berdasarkan id
+  async function hapusNotasById(ids) {
+    if (!ids?.length) return
+    await supabase.from('lpj_nota_items').delete().in('nota_id', ids)
+    await supabase.from('lpj_nota').delete().in('id', ids)
+  }
+  // Hapus semua nota sebuah LPJ, kecuali id yang disimpan (nota lama yang harus tetap ada)
+  async function hapusNotas(lpjId, kecuali = []) {
+    const { data } = await supabase.from('lpj_nota').select('id').eq('lpj_id', lpjId)
+    await hapusNotasById((data || []).map(n => n.id).filter(id => !kecuali.includes(id)))
+  }
+
   async function insertNotas(lpjId) {
+    const ids = []
     for (const nota of notas) {
       const { fileUrl, fileName } = await uploadNotaFile(lpjId, nota)
       const totalNota = nota.itemIds.reduce((sum, itemId) => {
@@ -476,6 +502,7 @@ export default function LpjPage() {
         lpj_id: lpjId, nama_nota: nota.nama_nota, total_nota: totalNota, file_url: fileUrl, file_name: fileName,
       }).select().single()
       if (notaErr) throw notaErr
+      ids.push(notaData.id)
 
       if (nota.itemIds.length > 0) {
         const notaItems = nota.itemIds.map(itemId => {
@@ -491,9 +518,13 @@ export default function LpjPage() {
           }
           return null
         }).filter(Boolean)
-        if (notaItems.length > 0) await supabase.from('lpj_nota_items').insert(notaItems)
+        if (notaItems.length > 0) {
+          const { error: itemErr } = await supabase.from('lpj_nota_items').insert(notaItems)
+          if (itemErr) throw itemErr
+        }
       }
     }
+    return ids
   }
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>

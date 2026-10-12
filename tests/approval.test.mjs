@@ -216,3 +216,10 @@ test('langkahBerikutnya tidak pernah kosong untuk status yang dikenal', () => {
   for (const st of ['submitted', 'approved_step1', 'approved_cfo', 'approved_ceo', 'revision', 'hold', 'rejected'])
     for (const d of DIVISIONS) assert.ok(langkahBerikutnya({ status: st, division: d, tipe: 'kebutuhan' }).length > 5, `${st} ${d}`)
 })
+
+test('masalahIsiPengajuan: item kosong / jumlah beda total ditolak, cocok lolos', async () => {
+  const { masalahIsiPengajuan } = await import('../src/lib/approval.js')
+  assert.match(masalahIsiPengajuan([], 165000), /tidak punya item/)
+  assert.match(masalahIsiPengajuan([{ qty: 1, harga_satuan: 125000, jumlah: 125000 }], 165000), /tidak sama/)
+  assert.equal(masalahIsiPengajuan([{ qty: 2, harga_satuan: 50000, jumlah: 100000 }, { qty: 1, harga_satuan: 65000 }], '165000.00'), null)
+})

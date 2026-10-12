@@ -212,7 +212,8 @@ export default function EditPengajuanPage() {
         await supabase.from('pengajuan_attachments').delete().eq('id', attachId)
       }
 
-      // Upload attachment baru
+      // Upload attachment baru (yang gagal dilaporkan, tidak diam-diam hilang)
+      const gagalUpload = []
       for (const file of newAttachments) {
         const ext = file.name?.split('.').pop() || 'jpg'
         const fileName = `${id}/${Date.now()}.${ext}`
@@ -227,7 +228,7 @@ export default function EditPengajuanPage() {
             file_size: file.size,
             uploaded_by: profile.id,
           })
-        }
+        } else gagalUpload.push(file.name || 'gambar')
       }
 
       // Catat di timeline
@@ -248,6 +249,7 @@ export default function EditPengajuanPage() {
           : { title: '📝 Pengajuan diajukan ulang', body: `"${judul}" diajukan ulang oleh ${profile.full_name} setelah revisi, kembali ke ${STATUS_LABEL[statusBaru]}` }
       )
 
+      if (gagalUpload.length > 0) alert(`Perubahan tersimpan, tapi lampiran gagal diunggah: ${gagalUpload.join(', ')}. Coba tambahkan lagi lewat Ubah.`)
       navigate(`/pengajuan/${id}`)
     } catch (err) {
       setError(err.message || 'Terjadi kesalahan')
