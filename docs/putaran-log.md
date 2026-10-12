@@ -219,9 +219,9 @@ Data live (12 Okt): 4 pengajuan bertotal tapi tanpa item — GTR-OPR-142 (Menung
 | F5 | Submit LPJ: nota gagal → LPJ kosong tetap terkirim | 3 | Fix (LPJ dibatalkan) |
 | F6 | Approve LPJ tanpa cek status → Finance & CFO bisa menimpa | 3 | Fix + K45 |
 | F7 | Foto nota / lampiran gagal unggah diam-diam | 3 | Fix (dilaporkan) |
-| F8 | Setelah revisi isi/nominal berubah, approval tahap sebelumnya tetap berlaku | 3 | Keputusan owner (D16) |
-| F9 | Pengaju meng-approve pengajuannya sendiri (Linda: submit & approve tahap 1 di menit yang sama) | 3 | Keputusan owner (H3) |
-| F10 | Pengajuan yang masih menunggu bisa diarsipkan → hilang dari antrean approver | 3 | Keputusan owner (D17) |
+| F8 | Setelah revisi isi/nominal berubah, approval tahap sebelumnya tetap berlaku | 3 | Diputuskan owner 12 Okt: approval tetap berlaku, tidak diulang (perilaku sekarang dipertahankan) |
+| F9 | Pengaju meng-approve pengajuannya sendiri (Linda: submit & approve tahap 1 di menit yang sama) | 3 | Diputuskan owner 12 Okt: boleh (H3 ditutup) |
+| F10 | Pengajuan yang masih menunggu bisa diarsipkan → hilang dari antrean approver | 3 | Diputuskan owner 12 Okt: boleh, arsip untuk pengajuan terlupakan/batal |
 | F11 | Insert timeline (approval_logs) gagal diam-diam di approve/tolak | 2 | Backlog |
 | F12 | Kode surat terpakai walau pengajuan dibatalkan (nomor loncat) | 1 | Diterima |
 
