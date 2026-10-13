@@ -3,6 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import klasifikasi, { bacaJawaban, buatPrompt } from '../api/klasifikasi.js'
 import claude from '../api/claude.js'
+import { cocokkanNama } from '../api/klasifikasi.js'
 
 const DAFTAR = ['Pemeliharaan Kendaraan', 'Pemeliharaan Alat', 'Perlengkapan Kantor', 'Trip Operasional']
 let calls
@@ -99,4 +100,15 @@ test('api/claude: hanya role CFO / Finance (role dari database), lainnya 403 tan
     assert.equal(res.statusCode, kode, String(role))
     if (kode === 403) assert.ok(!calls.some((c) => c.url.includes('anthropic')))
   }
+})
+
+test('cocokkanNama: jawaban AI yang ikut keterangan / beda ejaan tetap cocok ke daftar (bug 13 Okt)', () => {
+  const daftar = ['Pemeliharaan Kendaraan', 'Pemeliharaan Alat', 'Mobilisai Operasional, Jasa Service Truck, dan Koordinasi Ga-Ling', 'Office', 'Top Up Gas']
+  assert.equal(cocokkanNama('Pemeliharaan Kendaraan: Servis, ganti oli, ban, atau perbaikan kendaraan operasional', daftar), 'Pemeliharaan Kendaraan')
+  assert.equal(cocokkanNama('Pemeliharaan Kendaraan — Servis, ganti oli', daftar), 'Pemeliharaan Kendaraan')
+  assert.equal(cocokkanNama('Mobilisasi Operasional, Jasa Service Truck, dan Koordinasi Ga-Ling', daftar), 'Mobilisai Operasional, Jasa Service Truck, dan Koordinasi Ga-Ling')
+  assert.equal(cocokkanNama('top up  gas', daftar), 'Top Up Gas')
+  assert.equal(cocokkanNama('Pemeliharaan Mesin', daftar), null) // beda jauh: jangan ditebak
+  assert.equal(cocokkanNama('Ofice', daftar), null) // nama pendek: tidak pakai toleransi ejaan
+  assert.equal(cocokkanNama(null, daftar), null)
 })

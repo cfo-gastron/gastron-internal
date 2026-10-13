@@ -12,19 +12,49 @@ export function buatPrompt(judul, items, daftar) {
   return {
     system:
       'Kamu mengelompokkan pengajuan dana internal perusahaan CNG ke SATU subkategori. ' +
-      'Pilih HANYA dari daftar yang diberikan, tulis namanya persis. ' +
-      'Kalau judul terlalu umum sehingga tidak bisa ditentukan, jawab subkategori null. ' +
+      'Pilih HANYA dari daftar yang diberikan. Tulis NAMA-nya saja persis seperti di daftar, tanpa keterangan setelah titik dua. ' +
+      'Pilih yang PALING COCOK walaupun tidak sempurna. Jawab null HANYA kalau judul sama sekali tidak menjelaskan untuk apa dananya (mis. "Pengajuan", "Reimburse"). ' +
       'Balas HANYA JSON: {"subkategori": "<nama persis dari daftar atau null>", "alasan": "<maks 12 kata>"}',
     user: `Judul pengajuan: "${judul}"\nItem: ${items.length ? items.map((i) => `"${i}"`).join(', ') : '(belum diisi)'}\n\nDaftar subkategori:\n${pilihan}`,
   }
+}
+
+// Cocokkan jawaban AI ke daftar resmi. AI kadang ikut menyalin keterangan ("Nama: keterangan"),
+// atau menulis ejaan benar padahal nama di database salah ketik ("Mobilisai"). Urutan:
+// persis -> buang keterangan -> abaikan tanda baca/spasi -> beda maks 2 huruf (nama panjang).
+const rapi = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+function jarak(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+  return d[a.length][b.length]
+}
+export function cocokkanNama(nama, daftar) {
+  if (!nama) return null
+  const calon = [String(nama).trim(), String(nama).split(/\s[:—–-]\s|:\s/)[0].trim()]
+  for (const c of calon) {
+    const persis = daftar.find((d) => d.toLowerCase() === c.toLowerCase())
+    if (persis) return persis
+  }
+  for (const c of calon) {
+    const sama = daftar.find((d) => rapi(d) === rapi(c))
+    if (sama) return sama
+  }
+  for (const c of calon) {
+    const r = rapi(c)
+    if (r.length < 8) continue
+    const dekat = daftar.map((d) => ({ d, j: jarak(rapi(d), r) })).filter((x) => x.j <= 2).sort((a, b) => a.j - b.j)
+    if (dekat.length === 1 || (dekat.length > 1 && dekat[0].j < dekat[1].j)) return dekat[0].d
+  }
+  return null
 }
 
 export function bacaJawaban(text, daftar) {
   try {
     const parsed = JSON.parse(String(text).replace(/```json|```/g, '').trim())
     const nama = typeof parsed.subkategori === 'string' ? parsed.subkategori.trim() : null
-    const cocok = nama ? daftar.find((d) => d.toLowerCase() === nama.toLowerCase()) : null
-    return { subkategori: cocok || null, alasan: String(parsed.alasan || '').slice(0, 120) }
+    return { subkategori: cocokkanNama(nama, daftar), alasan: String(parsed.alasan || '').slice(0, 120) }
   } catch {
     return { subkategori: null, alasan: '' }
   }
